@@ -1,93 +1,186 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:varys/features/home/presentation/home_screen.dart';
+import 'package:varys/features/inbox/presentation/inbox_screen.dart';
+import 'package:varys/features/planning/presentation/planning_screen.dart';
+import 'package:varys/features/notes/presentation/notes_screen.dart';
+import 'package:varys/features/varys_chat/presentation/varys_chat_screen.dart';
+import 'package:varys/shared/widgets/main_scaffold.dart';
 
-import '../../features/home/presentation/home_screen.dart';
-import '../../features/inbox/presentation/inbox_screen.dart';
-import '../../features/notes/presentation/notes_screen.dart';
-import '../../features/planning/presentation/planning_screen.dart';
-import '../../features/varys_chat/presentation/varys_chat_screen.dart';
-import '../../shared/responsive_scaffold.dart';
+/// Application router configuration using GoRouter with StatefulShellRoute.
+///
+/// Implements a responsive navigation pattern:
+/// - NavigationRail (left side) for widths > 800px
+/// - NavigationBar (bottom) for widths <= 800px
+///
+/// Uses StatefulShellRoute to preserve state across tab switches.
+class AppRouter {
+  static const String homePath = '/home';
+  static const String inboxPath = '/inbox';
+  static const String planningPath = '/planning';
+  static const String notesPath = '/notes';
+  static const String varysChatPath = '/varys-chat';
 
-part 'app_router.g.dart';
-
-@riverpod
-GoRouter router(RouterRef ref) {
-  return GoRouter(
-    initialLocation: '/home',
+  static final GoRouter router = GoRouter(
+    initialLocation: homePath,
     routes: [
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
-          return ResponsiveScaffold(navigationShell: navigationShell);
+          return MainScaffold(navigationShell: navigationShell);
         },
         branches: [
+          // Home branch
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/home',
+                path: homePath,
                 name: 'home',
-                builder: (context, state) => const HomeScreen(),
+                pageBuilder: (context, state) => const NoTransitionPage(
+                  child: HomeScreen(),
+                ),
               ),
             ],
           ),
+          // Inbox branch
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/inbox',
+                path: inboxPath,
                 name: 'inbox',
-                builder: (context, state) => const InboxScreen(),
+                pageBuilder: (context, state) => const NoTransitionPage(
+                  child: InboxScreen(),
+                ),
               ),
             ],
           ),
+          // Planning branch
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/planning',
+                path: planningPath,
                 name: 'planning',
-                builder: (context, state) => const PlanningScreen(),
+                pageBuilder: (context, state) => const NoTransitionPage(
+                  child: PlanningScreen(),
+                ),
               ),
             ],
           ),
+          // Notes branch
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/notes',
+                path: notesPath,
                 name: 'notes',
-                builder: (context, state) => const NotesScreen(),
+                pageBuilder: (context, state) => const NoTransitionPage(
+                  child: NotesScreen(),
+                ),
               ),
             ],
           ),
+          // Varys Chat branch
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/varys-chat',
+                path: varysChatPath,
                 name: 'varys-chat',
-                builder: (context, state) => const VarysChatScreen(),
+                pageBuilder: (context, state) => const NoTransitionPage(
+                  child: VarysChatScreen(),
+                ),
               ),
             ],
           ),
         ],
       ),
     ],
+    // Error handling
+    errorBuilder: (context, state) => Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            const SizedBox(height: 16),
+            Text(
+              'Page Not Found',
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              state.error?.toString() ?? 'Unknown error',
+              style: Theme.of(context).textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    ),
   );
 }
 
-enum AppDestination {
-  home('Home', Icons.home_outlined, Icons.home, '/home'),
-  inbox('Inbox', Icons.inbox_outlined, Icons.inbox, '/inbox'),
-  planning('Planning', Icons.calendar_today_outlined, Icons.calendar_today, '/planning'),
-  notes('Notes', Icons.note_outlined, Icons.note, '/notes'),
-  varysChat('Varys', Icons.chat_outlined, Icons.chat, '/varys-chat');
-
-  const AppDestination(
-    this.label,
-    this.icon,
-    this.selectedIcon,
-    this.route,
-  );
-
+/// Navigation destination model
+class NavigationDestinationItem {
   final String label;
   final IconData icon;
-  final IconData selectedIcon;
-  final String route;
+  final IconData? selectedIcon;
+  final String routePath;
+
+  const NavigationDestinationItem({
+    required this.label,
+    required this.icon,
+    this.selectedIcon,
+    required this.routePath,
+  });
+}
+
+/// Navigation destinations configuration
+class NavigationDestinations {
+  static const List<NavigationDestinationItem> destinations = [
+    NavigationDestinationItem(
+      label: 'Ana Sayfa',
+      icon: Icons.home_outlined,
+      selectedIcon: Icons.home,
+      routePath: AppRouter.homePath,
+    ),
+    NavigationDestinationItem(
+      label: 'Gelen Kutusu',
+      icon: Icons.inbox_outlined,
+      selectedIcon: Icons.inbox,
+      routePath: AppRouter.inboxPath,
+    ),
+    NavigationDestinationItem(
+      label: 'Planlama',
+      icon: Icons.calendar_today_outlined,
+      selectedIcon: Icons.calendar_today,
+      routePath: AppRouter.planningPath,
+    ),
+    NavigationDestinationItem(
+      label: 'Notlar',
+      icon: Icons.note_outlined,
+      selectedIcon: Icons.note,
+      routePath: AppRouter.notesPath,
+    ),
+    NavigationDestinationItem(
+      label: 'Varys',
+      icon: Icons.smart_toy_outlined,
+      selectedIcon: Icons.smart_toy,
+      routePath: AppRouter.varysChatPath,
+    ),
+  ];
+
+  static List<NavigationDestination> get navigationDestinations => destinations
+      .map((d) => NavigationDestination(
+            icon: Icon(d.icon),
+            selectedIcon: d.selectedIcon != null ? Icon(d.selectedIcon!) : null,
+            label: d.label,
+          ))
+      .toList();
+
+  static List<NavigationRailDestination> get navigationRailDestinations =>
+      destinations
+          .map((d) => NavigationRailDestination(
+                icon: Icon(d.icon),
+                selectedIcon: d.selectedIcon != null ? Icon(d.selectedIcon!) : null,
+                label: Text(d.label),
+              ))
+          .toList();
 }

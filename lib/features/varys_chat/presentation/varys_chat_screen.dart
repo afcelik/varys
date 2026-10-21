@@ -1,17 +1,68 @@
 import 'package:flutter/material.dart';
 
+/// Varys Chat screen - AI assistant interaction
 class VarysChatScreen extends StatelessWidget {
   const VarysChatScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Varys')),
+      appBar: AppBar(
+        title: const Text('Varys'),
+      ),
       body: const Center(
-        child: Text(
-          'Varys',
-          style: TextStyle(fontSize: 32, fontWeight: FontWeight.w300),
+        child: _EmptyState(
+          icon: Icons.smart_toy,
+          title: 'Varys',
+          subtitle: 'Bu ekran henüz geliştirilmedi.',
         ),
+      ),
+    );
+  }
+}
+
+/// Empty state widget for placeholder screens
+class _EmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _EmptyState({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            size: 80,
+            color: theme.colorScheme.primary.withValues(alpha: 0.3),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            title,
+            style: theme.textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }
