@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:varys/features/planning/presentation/task_list_page.dart';
 
 /// Planning screen - tasks, schedules, and planning tools
 class PlanningScreen extends StatelessWidget {
@@ -6,64 +7,6 @@ class PlanningScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Planlama'),
-      ),
-      body: const Center(
-        child: _EmptyState(
-          icon: Icons.calendar_today,
-          title: 'Planlama',
-          subtitle: 'Bu ekran henüz geliştirilmedi.',
-        ),
-      ),
-    );
-  }
-}
-
-/// Empty state widget for placeholder screens
-class _EmptyState extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  const _EmptyState({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            icon,
-            size: 80,
-            color: theme.colorScheme.primary.withValues(alpha: 0.3),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            title,
-            style: theme.textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            subtitle,
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
+    return const TaskListPage();
   }
 }
