@@ -110,7 +110,22 @@ class _NavigationRailUserSection extends StatelessWidget {
             ),
             dense: true,
             onTap: () {
-              // TODO: Navigate to profile/settings
+              context.go(AppRouter.settingsPath);
+            },
+          ),
+          const SizedBox(height: 8),
+          ListTile(
+            leading: Icon(
+              Icons.settings_outlined,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+            ),
+            title: Text(
+              'Ayarlar',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            dense: true,
+            onTap: () {
+              context.go(AppRouter.settingsPath);
             },
           ),
         ],

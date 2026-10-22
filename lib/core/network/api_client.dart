@@ -1,11 +1,17 @@
 import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../storage/secure_storage.dart';
+
+/// Dio-based API client for communicating with the Varys backend.
+///
+/// Uses flutter_secure_storage to persist base URL and authentication token.
+/// Provides methods for making authenticated API requests.
 class ApiClient {
-  static const String baseUrl = 'https://api.varys.example.com';
-
   late final Dio _dio;
 
-  ApiClient() {
+  /// Creates an ApiClient with the given base URL and optional auth token.
+  ApiClient({required String baseUrl, String? authToken}) {
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
@@ -18,6 +24,10 @@ class ApiClient {
       ),
     );
 
+    if (authToken != null && authToken.isNotEmpty) {
+      _dio.options.headers['Authorization'] = 'Bearer $authToken';
+    }
+
     _dio.interceptors.add(
       LogInterceptor(
         requestBody: true,
@@ -29,13 +39,144 @@ class ApiClient {
     );
   }
 
+  /// Creates an ApiClient from stored credentials.
+  static Future<ApiClient> fromStorage() async {
+    final baseUrl = await SecureStorage.getServerUrl();
+    final authToken = await SecureStorage.getApiToken();
+    return ApiClient(baseUrl: baseUrl, authToken: authToken);
+  }
+
+  /// Gets the underlying Dio instance for advanced usage.
   Dio get dio => _dio;
 
+  /// Gets the current base URL.
+  String get baseUrl => _dio.options.baseUrl;
+
+  /// Updates the base URL and recreates the Dio instance.
+  void updateBaseUrl(String newBaseUrl) {
+    _dio.options.baseUrl = newBaseUrl;
+  }
+
+  /// Sets the authentication token.
   void setAuthToken(String token) {
     _dio.options.headers['Authorization'] = 'Bearer $token';
   }
 
+  /// Clears the authentication token.
   void clearAuthToken() {
     _dio.options.headers.remove('Authorization');
   }
+
+  /// Checks if an auth token is currently set.
+  bool get hasAuthToken => _dio.options.headers['Authorization'] != null;
+
+  /// Makes a GET request to test the connection (health endpoint).
+  Future<bool> testConnection() async {
+    try {
+      final response = await _dio.get('/health');
+      return response.statusCode == 200;
+    } on DioException {
+      return false;
+    }
+  }
+
+  /// Makes a GET request.
+  Future<Response<T>> get<T>(String path, {Map<String, dynamic>? queryParameters}) async {
+    return _dio.get<T>(path, queryParameters: queryParameters);
+  }
+
+  /// Makes a POST request.
+  Future<Response<T>> post<T>(String path, {dynamic data, Map<String, dynamic>? queryParameters}) async {
+    return _dio.post<T>(path, data: data, queryParameters: queryParameters);
+  }
+
+  /// Makes a PUT request.
+  Future<Response<T>> put<T>(String path, {dynamic data, Map<String, dynamic>? queryParameters}) async {
+    return _dio.put<T>(path, data: data, queryParameters: queryParameters);
+  }
+
+  /// Makes a PATCH request.
+  Future<Response<T>> patch<T>(String path, {dynamic data, Map<String, dynamic>? queryParameters}) async {
+    return _dio.patch<T>(path, data: data, queryParameters: queryParameters);
+  }
+
+  /// Makes a DELETE request.
+  Future<Response<T>> delete<T>(String path, {Map<String, dynamic>? queryParameters}) async {
+    return _dio.delete<T>(path, queryParameters: queryParameters);
+  }
 }
+
+/// Riverpod provider for the ApiClient.
+///
+/// This provider creates an ApiClient instance from stored credentials.
+/// It uses a FutureProvider since reading from secure storage is async.
+final apiClientProvider = FutureProvider<ApiClient>((ref) async {
+  return await ApiClient.fromStorage();
+});
+
+/// Riverpod provider for the Dio instance (for direct access if needed).
+final dioProvider = Provider<Dio>((ref) {
+  // This will throw if apiClientProvider hasn't resolved yet
+  final apiClient = ref.watch(apiClientProvider).requireValue;
+  return apiClient.dio;
+});
+
+/// Riverpod provider for checking if user is authenticated (has a token).
+final isAuthenticatedProvider = FutureProvider<bool>((ref) async {
+  return await SecureStorage.hasApiToken();
+});
+
+/// Riverpod provider for the current server URL.
+final serverUrlProvider = FutureProvider<String>((ref) async {
+  return await SecureStorage.getServerUrl();
+});
+
+/// Riverpod provider for the current API token (nullable).
+final apiTokenProvider = FutureProvider<String?>((ref) async {
+  return await SecureStorage.getApiToken();
+});
+
+/// Notifier for managing authentication state and server settings.
+class AuthNotifier extends StateNotifier<AsyncValue<void>> {
+  AuthNotifier() : super(const AsyncValue.data(null));
+
+  /// Updates the server URL and recreates the ApiClient.
+  Future<void> updateServerUrl(String newUrl) async {
+    state = const AsyncValue.loading();
+    try {
+      await SecureStorage.setServerUrl(newUrl);
+      // Invalidate the apiClientProvider to force recreation
+      // This will be handled by the UI layer calling ref.invalidate(apiClientProvider)
+      state = const AsyncValue.data(null);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
+
+  /// Sets the API token and recreates the ApiClient.
+  Future<void> setApiToken(String token) async {
+    state = const AsyncValue.loading();
+    try {
+      await SecureStorage.setApiToken(token);
+      state = const AsyncValue.data(null);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
+
+  /// Clears the API token (logout).
+  Future<void> logout() async {
+    state = const AsyncValue.loading();
+    try {
+      await SecureStorage.clearApiToken();
+      state = const AsyncValue.data(null);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
+}
+
+/// Riverpod provider for the AuthNotifier.
+final authNotifierProvider = StateNotifierProvider<AuthNotifier, AsyncValue<void>>((ref) {
+  return AuthNotifier();
+});

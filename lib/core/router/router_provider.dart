@@ -4,5 +4,6 @@ import 'package:varys/core/router/app_router.dart';
 
 /// Riverpod provider for the application router
 final routerProvider = Provider<GoRouter>((ref) {
-  return AppRouter.router;
+  // Use ref as WidgetRef by casting through the ProviderContainer
+  return AppRouter.createRouter(ref as WidgetRef);
 });
