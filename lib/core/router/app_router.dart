@@ -29,6 +29,42 @@ class AppRouter {
   static const String changePasswordPath = '/change-password';
 
   static GoRouter createRouter() {
+    // Build shell branches dynamically from shared destinations
+    final shellBranches = NavigationDestinations.shellDestinations.map((dest) {
+      Widget screen;
+      switch (dest.routePath) {
+        case homePath:
+          screen = const HomeScreen();
+          break;
+        case inboxPath:
+          screen = const InboxScreen();
+          break;
+        case planningPath:
+          screen = const PlanningScreen();
+          break;
+        case notesPath:
+          screen = const NotesScreen();
+          break;
+        case varysChatPath:
+          screen = const VarysChatScreen();
+          break;
+        default:
+          screen = const HomeScreen();
+      }
+
+      return StatefulShellBranch(
+        routes: [
+          GoRoute(
+            path: dest.routePath,
+            name: dest.routePath.replaceAll('/', ''),
+            pageBuilder: (context, state) => NoTransitionPage(
+              child: screen,
+            ),
+          ),
+        ],
+      );
+    }).toList();
+
     return GoRouter(
       initialLocation: homePath,
       // debugLogDiagnostics: true,
@@ -90,68 +126,7 @@ class AppRouter {
           builder: (context, state, navigationShell) {
             return MainScaffold(navigationShell: navigationShell);
           },
-          branches: [
-            // Home branch
-            StatefulShellBranch(
-              routes: [
-                GoRoute(
-                  path: homePath,
-                  name: 'home',
-                  pageBuilder: (context, state) => const NoTransitionPage(
-                    child: HomeScreen(),
-                  ),
-                ),
-              ],
-            ),
-            // Inbox branch
-            StatefulShellBranch(
-              routes: [
-                GoRoute(
-                  path: inboxPath,
-                  name: 'inbox',
-                  pageBuilder: (context, state) => const NoTransitionPage(
-                    child: InboxScreen(),
-                  ),
-                ),
-              ],
-            ),
-            // Planning branch
-            StatefulShellBranch(
-              routes: [
-                GoRoute(
-                  path: planningPath,
-                  name: 'planning',
-                  pageBuilder: (context, state) => const NoTransitionPage(
-                    child: PlanningScreen(),
-                  ),
-                ),
-              ],
-            ),
-            // Notes branch
-            StatefulShellBranch(
-              routes: [
-                GoRoute(
-                  path: notesPath,
-                  name: 'notes',
-                  pageBuilder: (context, state) => const NoTransitionPage(
-                    child: NotesScreen(),
-                  ),
-                ),
-              ],
-            ),
-            // Varys Chat branch
-            StatefulShellBranch(
-              routes: [
-                GoRoute(
-                  path: varysChatPath,
-                  name: 'varys-chat',
-                  pageBuilder: (context, state) => const NoTransitionPage(
-                    child: VarysChatScreen(),
-                  ),
-                ),
-              ],
-            ),
-          ],
+          branches: shellBranches,
         ),
       ],
       // Error handling
@@ -186,18 +161,21 @@ class NavigationDestinationItem {
   final IconData icon;
   final IconData? selectedIcon;
   final String routePath;
+  final bool isExternalRoute; // Route outside the StatefulShellRoute (e.g., Settings)
 
   const NavigationDestinationItem({
     required this.label,
     required this.icon,
     this.selectedIcon,
     required this.routePath,
+    this.isExternalRoute = false,
   });
 }
 
 /// Navigation destinations configuration
 class NavigationDestinations {
-  static const List<NavigationDestinationItem> destinations = [
+  // Shell destinations (managed by StatefulShellRoute)
+  static const List<NavigationDestinationItem> _shellDestinations = [
     NavigationDestinationItem(
       label: 'Ana Sayfa',
       icon: Icons.home_outlined,
@@ -230,7 +208,30 @@ class NavigationDestinations {
     ),
   ];
 
-  static List<NavigationDestination> get navigationDestinations => destinations
+  // External destinations (full-screen routes outside the shell)
+  static const List<NavigationDestinationItem> _externalDestinations = [
+    NavigationDestinationItem(
+      label: 'Ayarlar',
+      icon: Icons.settings_outlined,
+      selectedIcon: Icons.settings,
+      routePath: AppRouter.settingsPath,
+      isExternalRoute: true,
+    ),
+  ];
+
+  /// All destinations combined (shell + external)
+  static List<NavigationDestinationItem> get allDestinations => [
+        ..._shellDestinations,
+        ..._externalDestinations,
+      ];
+
+  /// Only shell destinations (for StatefulShellRoute branches)
+  static List<NavigationDestinationItem> get shellDestinations => _shellDestinations;
+
+  /// Only external destinations (for bottom rail trailing, etc.)
+  static List<NavigationDestinationItem> get externalDestinations => _externalDestinations;
+
+  static List<NavigationDestination> get navigationDestinations => allDestinations
       .map((d) => NavigationDestination(
             icon: Icon(d.icon),
             selectedIcon: d.selectedIcon != null ? Icon(d.selectedIcon!) : null,
@@ -239,7 +240,7 @@ class NavigationDestinations {
       .toList();
 
   static List<NavigationRailDestination> get navigationRailDestinations =>
-      destinations
+      shellDestinations
           .map((d) => NavigationRailDestination(
                 icon: Icon(d.icon),
                 selectedIcon: d.selectedIcon != null ? Icon(d.selectedIcon!) : null,

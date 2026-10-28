@@ -4,6 +4,9 @@ build/
 .pub/
 pubspec.lock
 
+# Environment
+.env
+
 # IDE
 .idea/
 .vscode/
