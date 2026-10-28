@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'dart:developer';
 
 import 'package:varys/core/network/api_client.dart';
+import 'package:varys/core/router/app_router.dart';
 import 'package:varys/core/storage/secure_storage.dart';
 
-/// Settings screen for configuring backend connection.
+/// Settings screen for configuring app settings.
 ///
-/// Allows user to set server URL and API token, and test the connection.
+/// Allows user to set server URL and change local app password.
+/// API token is loaded from .env file.
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -20,11 +24,9 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _formKey = GlobalKey<FormState>();
   final _serverUrlController = TextEditingController();
-  final _apiTokenController = TextEditingController();
 
   bool _isTestingConnection = false;
   String? _connectionTestResult;
-  bool _obscureToken = true;
 
   @override
   void initState() {
@@ -35,28 +37,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   void dispose() {
     _serverUrlController.dispose();
-    _apiTokenController.dispose();
     super.dispose();
   }
 
   Future<void> _loadSavedSettings() async {
     final serverUrl = await SecureStorage.getServerUrl();
-    final apiToken = await SecureStorage.getApiToken();
 
     if (mounted) {
       _serverUrlController.text = serverUrl;
-      _apiTokenController.text = apiToken ?? '';
     }
   }
 
   Future<void> _saveSettings() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final notifier = ref.read(authNotifierProvider.notifier);
-    await notifier.updateServerUrl(_serverUrlController.text.trim());
-    await notifier.setApiToken(_apiTokenController.text.trim());
+    log('SettingsScreen: Saving settings...', name: 'SettingsScreen');
+    log('SettingsScreen: Server URL: ${_serverUrlController.text.trim()}', name: 'SettingsScreen');
+
+    await SecureStorage.setServerUrl(_serverUrlController.text.trim());
 
     if (mounted) {
+      log('SettingsScreen: Settings saved', name: 'SettingsScreen');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Ayarlar kaydedildi'),
@@ -65,7 +66,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       );
       // Invalidate providers to recreate ApiClient with new settings
       ref.invalidate(apiClientProvider);
-      ref.invalidate(isAuthenticatedProvider);
       ref.invalidate(serverUrlProvider);
       ref.invalidate(apiTokenProvider);
     }
@@ -81,11 +81,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     try {
       // Create a temporary ApiClient with the entered settings
+      final apiToken = await SecureStorage.getApiToken();
       final tempClient = ApiClient(
         baseUrl: _serverUrlController.text.trim(),
-        authToken: _apiTokenController.text.trim().isEmpty
-            ? null
-            : _apiTokenController.text.trim(),
+        authToken: apiToken,
       );
 
       final success = await tempClient.testConnection();
@@ -106,6 +105,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         });
       }
     }
+  }
+
+  void _navigateToChangePassword() {
+    context.push(AppRouter.changePasswordPath);
   }
 
   @override
@@ -154,45 +157,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     }
                     return null;
                   },
-                ),
-                const SizedBox(height: 24),
-
-                // API Token Section
-                Text(
-                  'Kimlik Doğrulama',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                TextFormField(
-                  controller: _apiTokenController,
-                  obscureText: _obscureToken,
-                  decoration: InputDecoration(
-                    labelText: 'API Token',
-                    hintText: 'Backend API token\'ınızı girin',
-                    prefixIcon: const Icon(Icons.vpn_key_outlined),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscureToken ? Icons.visibility_off : Icons.visibility,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _obscureToken = !_obscureToken;
-                        });
-                      },
-                    ),
-                    helperText: 'Bu token sadece backend erişimi içindir. AI API anahtarları asla istemciye gelmez.',
-                  ),
-                  textInputAction: TextInputAction.done,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'API token gerekli';
-                    }
-                    return null;
-                  },
-                  onFieldSubmitted: (_) => _testConnection(),
                 ),
                 const SizedBox(height: 24),
 
@@ -255,6 +219,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   const SizedBox(height: 24),
                 ],
 
+                // Security Section
+                Text(
+                  'Güvenlik',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                OutlinedButton.icon(
+                  onPressed: _navigateToChangePassword,
+                  icon: const Icon(Icons.lock),
+                  label: const Text('Uygulama Şifresi Değiştir'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                Text(
+                  'Uygulama kilit şifresini değiştirmek için tıklayın. Mevcut şifre doğrulanır.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
                 // Save Button
                 FilledButton(
                   onPressed: _saveSettings,
@@ -290,10 +281,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          '• Sunucu adresi ve API token güvenli bir şekilde cihazınızda saklanır\n'
+                          '• Sunucu adresi güvenli bir şekilde cihazınızda saklanır\n'
+                          '• Backend API token .env dosyasından okunur (API_TOKEN)\n'
+                          '• Uygulama şifresi .env dosyasından (APP_PASSWORD) veya ayarlardan yönetilir\n'
                           '• AI sağlayıcıları (NVIDIA vb.) için API anahtarları asla istemciye gönderilmez\n'
-                          '• Tüm AI etkileşimleri backend üzerinden güvenli bir şekilde gerçekleşir\n'
-                          '• Token\'ınızı kaybettiyseniz backend yöneticisinden yeni bir tane isteyin',
+                          '• Tüm AI etkileşimleri backend üzerinden güvenli bir şekilde gerçekleşir',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
                           ),

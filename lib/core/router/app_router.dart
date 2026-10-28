@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:varys/core/storage/secure_storage.dart';
+import 'package:varys/features/auth/presentation/change_password_screen.dart';
+import 'package:varys/features/auth/presentation/lock_screen.dart';
 import 'package:varys/features/home/presentation/home_screen.dart';
 import 'package:varys/features/inbox/presentation/inbox_screen.dart';
 import 'package:varys/features/notes/presentation/notes_screen.dart';
@@ -24,24 +25,58 @@ class AppRouter {
   static const String notesPath = '/notes';
   static const String varysChatPath = '/varys-chat';
   static const String settingsPath = '/settings';
+  static const String lockPath = '/lock';
+  static const String changePasswordPath = '/change-password';
 
-  static GoRouter createRouter(WidgetRef ref) {
+  static GoRouter createRouter() {
     return GoRouter(
       initialLocation: homePath,
-      // Redirect to settings if no token is present
+      // debugLogDiagnostics: true,
+      // Redirect to lock screen if app password is set but not authenticated
       redirect: (context, state) async {
-        final hasToken = await SecureStorage.hasApiToken();
-        final isSettingsRoute = state.matchedLocation == settingsPath;
+        // debugPrint('=== Router redirect called ===');
+        // debugPrint('  Location: ${state.matchedLocation}');
+        // debugPrint('  TopRoute: ${state.topRoute?.path}');
+        // debugPrint('  FullPath: ${state.fullPath}');
 
-        // If no token and not on settings page, redirect to settings
-        if (!hasToken && !isSettingsRoute) {
-          return settingsPath;
+        final hasAppPassword = await SecureStorage.hasAppPassword();
+        final isLockRoute = state.matchedLocation == lockPath;
+        final isChangePasswordRoute = state.matchedLocation == changePasswordPath;
+        final isAuthRoute = isLockRoute || isChangePasswordRoute;
+        // debugPrint('  hasAppPassword: $hasAppPassword, isAuthRoute: $isAuthRoute');
+
+        // If has app password and not on auth pages, redirect to lock
+        if (hasAppPassword && !isAuthRoute) {
+          // debugPrint('  >>> Redirecting to lock (has app password)');
+          return lockPath;
         }
 
-        // If has token and on settings page, allow (user may want to change settings)
+        // If no app password and on auth pages, redirect to home
+        if (!hasAppPassword && isAuthRoute) {
+          // debugPrint('  >>> Redirecting to home (no app password)');
+          return homePath;
+        }
+
+        // debugPrint('  >>> Allowing navigation');
         return null;
       },
       routes: [
+        // Lock route (outside the shell - full screen)
+        GoRoute(
+          path: lockPath,
+          name: 'lock',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: LockScreen(),
+          ),
+        ),
+        // Change Password route (outside the shell - full screen)
+        GoRoute(
+          path: changePasswordPath,
+          name: 'change-password',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: ChangePasswordScreen(),
+          ),
+        ),
         // Settings route (outside the shell - full screen)
         GoRoute(
           path: settingsPath,

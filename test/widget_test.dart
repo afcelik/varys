@@ -14,6 +14,7 @@ import 'package:varys/main.dart';
 void main() {
   testWidgets('App loads with correct title', (WidgetTester tester) async {
     // Build our app and trigger a frame.
+    // Note: main.dart loads dotenv, but tests don't need it to run
     await tester.pumpWidget(const ProviderScope(child: VarysApp()));
 
     // Verify that the app loads with a title

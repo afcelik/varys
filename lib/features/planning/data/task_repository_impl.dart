@@ -138,7 +138,9 @@ class TaskRepositoryImpl implements TaskRepository {
 }
 
 /// Riverpod provider for TaskRepository
-final taskRepositoryProvider = Provider<TaskRepository>((ref) {
-  final apiClient = ref.watch(apiClientProvider).requireValue;
+///
+/// Uses FutureProvider since it depends on ApiClient which is async.
+final taskRepositoryProvider = FutureProvider<TaskRepository>((ref) async {
+  final apiClient = await ref.watch(apiClientProvider.future);
   return TaskRepositoryImpl(apiClient);
 });

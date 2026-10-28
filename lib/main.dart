@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'core/router/router_provider.dart';
 import 'core/theme/app_theme.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Load .env file if it exists (ignore if not found for tests)
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (e) {
+    // .env file not found, using defaults - this is fine for tests
+  }
+
   runApp(const ProviderScope(child: VarysApp()));
 }
 
