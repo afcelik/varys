@@ -2,7 +2,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'dart:developer' as dev;
 
-/// Secure storage service for persisting sensitive data like API tokens and server URLs.
+/// Secure storage service for persisting sensitive data like JWT tokens and server URLs.
 ///
 /// Uses flutter_secure_storage which provides platform-specific secure storage:
 /// - iOS: Keychain
@@ -29,8 +29,7 @@ class SecureStorage {
 
   // Storage keys
   static const String _serverUrlKey = 'server_url';
-  static const String _apiTokenKey = 'api_token';
-  static const String _appPasswordKey = 'app_password';
+  static const String _authTokenKey = 'auth_token';
 
   /// Default server URL (can be overridden by user settings)
   static const String defaultServerUrl = 'http://10.0.2.2:8000'; // Android emulator default
@@ -56,32 +55,22 @@ class SecureStorage {
     await _storage.write(key: _serverUrlKey, value: url);
   }
 
-  /// Gets the API token from .env, or falls back to secure storage.
-  static Future<String?> getApiToken() async {
-    try {
-      // First try .env
-      final envToken = dotenv.env['API_TOKEN'];
-      if (envToken != null && envToken.isNotEmpty) {
-        return envToken;
-      }
-    } catch (e) {
-      // dotenv not initialized, continue to secure storage
-    }
-    // Fallback to secure storage
-    return await _storage.read(key: _apiTokenKey);
+  /// Gets the JWT auth token from secure storage.
+  static Future<String?> getAuthToken() async {
+    return await _storage.read(key: _authTokenKey);
   }
 
-  /// Stores the API token in secure storage (as fallback/override).
-  static Future<void> setApiToken(String token) async {
-    dev.log('SecureStorage: Writing token (length: ${token.length})', name: 'SecureStorage');
-    await _storage.write(key: _apiTokenKey, value: token);
+  /// Stores the JWT auth token in secure storage.
+  static Future<void> setAuthToken(String token) async {
+    dev.log('SecureStorage: Writing auth token (length: ${token.length})', name: 'SecureStorage');
+    await _storage.write(key: _authTokenKey, value: token);
     dev.log('SecureStorage: Write completed', name: 'SecureStorage');
   }
 
-  /// Clears the API token from secure storage.
-  static Future<void> clearApiToken() async {
-    dev.log('SecureStorage: Deleting token', name: 'SecureStorage');
-    await _storage.delete(key: _apiTokenKey);
+  /// Clears the JWT auth token from secure storage.
+  static Future<void> clearAuthToken() async {
+    dev.log('SecureStorage: Deleting auth token', name: 'SecureStorage');
+    await _storage.delete(key: _authTokenKey);
     dev.log('SecureStorage: Delete completed', name: 'SecureStorage');
   }
 
@@ -92,56 +81,9 @@ class SecureStorage {
     dev.log('SecureStorage: Clear completed', name: 'SecureStorage');
   }
 
-  /// Checks if an API token is available (from .env or secure storage).
-  static Future<bool> hasApiToken() async {
-    try {
-      final envToken = dotenv.env['API_TOKEN'];
-      if (envToken != null && envToken.isNotEmpty) {
-        dev.log('SecureStorage: hasApiToken - found in .env', name: 'SecureStorage');
-        return true;
-      }
-    } catch (e) {
-      // dotenv not initialized, continue to secure storage
-    }
-    final token = await _storage.read(key: _apiTokenKey);
-    final hasToken = token != null && token.isNotEmpty;
-    dev.log('SecureStorage: hasApiToken read result: $hasToken (token: ${token?.substring(0, 10) ?? "null"}...)', name: 'SecureStorage');
-    return hasToken;
-  }
-
-  /// Gets the local app password from .env, or falls back to secure storage.
-  static Future<String?> getAppPassword() async {
-    try {
-      // First try .env
-      final envPassword = dotenv.env['APP_PASSWORD'];
-      if (envPassword != null && envPassword.isNotEmpty) {
-        return envPassword;
-      }
-    } catch (e) {
-      // dotenv not initialized, continue to secure storage
-    }
-    // Fallback to secure storage
-    return await _storage.read(key: _appPasswordKey);
-  }
-
-  /// Stores the app password in secure storage (as fallback/override).
-  static Future<void> setAppPassword(String password) async {
-    dev.log('SecureStorage: Writing app password', name: 'SecureStorage');
-    await _storage.write(key: _appPasswordKey, value: password);
-    dev.log('SecureStorage: Write completed', name: 'SecureStorage');
-  }
-
-  /// Checks if an app password is set.
-  static Future<bool> hasAppPassword() async {
-    try {
-      final envPassword = dotenv.env['APP_PASSWORD'];
-      if (envPassword != null && envPassword.isNotEmpty) {
-        return true;
-      }
-    } catch (e) {
-      // dotenv not initialized, continue to secure storage
-    }
-    final password = await _storage.read(key: _appPasswordKey);
-    return password != null && password.isNotEmpty;
+  /// Checks if a JWT auth token is available.
+  static Future<bool> hasAuthToken() async {
+    final token = await _storage.read(key: _authTokenKey);
+    return token != null && token.isNotEmpty;
   }
 }

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:varys/core/storage/secure_storage.dart';
-import 'package:varys/features/auth/presentation/change_password_screen.dart';
-import 'package:varys/features/auth/presentation/lock_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:varys/features/auth/domain/auth_notifier.dart';
+import 'package:varys/features/auth/domain/auth_state.dart';
+import 'package:varys/features/auth/presentation/login_page.dart';
 import 'package:varys/features/home/presentation/home_screen.dart';
 import 'package:varys/features/inbox/presentation/inbox_screen.dart';
 import 'package:varys/features/notes/presentation/notes_screen.dart';
@@ -18,6 +19,7 @@ import 'package:varys/shared/widgets/main_scaffold.dart';
 /// - NavigationBar (bottom) for widths <= 800px
 ///
 /// Uses StatefulShellRoute to preserve state across tab switches.
+/// Uses a provider-based approach for synchronous auth-based redirects.
 class AppRouter {
   static const String homePath = '/home';
   static const String inboxPath = '/inbox';
@@ -25,10 +27,13 @@ class AppRouter {
   static const String notesPath = '/notes';
   static const String varysChatPath = '/varys-chat';
   static const String settingsPath = '/settings';
-  static const String lockPath = '/lock';
-  static const String changePasswordPath = '/change-password';
+  static const String loginPath = '/login';
 
-  static GoRouter createRouter() {
+  static GoRouter createRouter(Ref ref) {
+    // Get the initial auth state
+    // Note: We don't use initial state here, redirect reads current state on each call
+    ref.read(authNotifierProvider);
+
     // Build shell branches dynamically from shared destinations
     final shellBranches = NavigationDestinations.shellDestinations.map((dest) {
       Widget screen;
@@ -65,52 +70,45 @@ class AppRouter {
       );
     }).toList();
 
-    return GoRouter(
+    // Create a list of redirect logic that will be evaluated on each navigation
+    // We use a simple approach: listen to auth state changes and refresh the router
+    final router = GoRouter(
       initialLocation: homePath,
-      // debugLogDiagnostics: true,
-      // Redirect to lock screen if app password is set but not authenticated
-      redirect: (context, state) async {
-        // debugPrint('=== Router redirect called ===');
-        // debugPrint('  Location: ${state.matchedLocation}');
-        // debugPrint('  TopRoute: ${state.topRoute?.path}');
-        // debugPrint('  FullPath: ${state.fullPath}');
+      // We'll use a simple redirect that reads from the provider
+      // The router will be refreshed when authNotifierProvider changes
+      refreshListenable: _RouterRefreshListenable(ref, authNotifierProvider),
+      redirect: (context, state) {
+        // Read current auth state from provider
+        final currentAuthState = ref.read(authNotifierProvider);
 
-        final hasAppPassword = await SecureStorage.hasAppPassword();
-        final isLockRoute = state.matchedLocation == lockPath;
-        final isChangePasswordRoute = state.matchedLocation == changePasswordPath;
-        final isAuthRoute = isLockRoute || isChangePasswordRoute;
-        // debugPrint('  hasAppPassword: $hasAppPassword, isAuthRoute: $isAuthRoute');
+        final isLoginRoute = state.matchedLocation == loginPath;
+        final isSettingsRoute = state.matchedLocation == settingsPath;
 
-        // If has app password and not on auth pages, redirect to lock
-        if (hasAppPassword && !isAuthRoute) {
-          // debugPrint('  >>> Redirecting to lock (has app password)');
-          return lockPath;
+        // Allow access to login and settings without auth
+        if (isLoginRoute || isSettingsRoute) {
+          // If already authenticated and trying to access login, redirect to home
+          if (isLoginRoute && currentAuthState is AuthAuthenticated) {
+            return homePath;
+          }
+          return null;
         }
 
-        // If no app password and on auth pages, redirect to home
-        if (!hasAppPassword && isAuthRoute) {
-          // debugPrint('  >>> Redirecting to home (no app password)');
-          return homePath;
+        // For all other routes, require authentication
+        if (currentAuthState is! AuthAuthenticated) {
+          // Not authenticated - redirect to login
+          return loginPath;
         }
 
-        // debugPrint('  >>> Allowing navigation');
+        // Authenticated - allow access
         return null;
       },
       routes: [
-        // Lock route (outside the shell - full screen)
+        // Login route (outside the shell - full screen)
         GoRoute(
-          path: lockPath,
-          name: 'lock',
+          path: loginPath,
+          name: 'login',
           pageBuilder: (context, state) => const NoTransitionPage(
-            child: LockScreen(),
-          ),
-        ),
-        // Change Password route (outside the shell - full screen)
-        GoRoute(
-          path: changePasswordPath,
-          name: 'change-password',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: ChangePasswordScreen(),
+            child: LoginPage(),
           ),
         ),
         // Settings route (outside the shell - full screen)
@@ -152,6 +150,30 @@ class AppRouter {
         ),
       ),
     );
+
+    return router;
+  }
+}
+
+/// A Listenable that listens to a Riverpod provider and notifies when it changes.
+///
+/// This allows GoRouter to refresh its redirect logic when auth state changes.
+class _RouterRefreshListenable extends ChangeNotifier {
+  final Ref _ref;
+  final StateNotifierProvider<AuthNotifier, AuthState> _provider;
+
+  _RouterRefreshListenable(this._ref, this._provider) {
+    // Listen to provider changes
+    _ref.listen<AuthState>(_provider, (previous, next) {
+      notifyListeners();
+    });
+  }
+
+  @override
+  void dispose() {
+    // Note: In Riverpod 2.x, we can't easily unsubscribe from ref.listen
+    // The listener will be cleaned up when the ref is disposed
+    super.dispose();
   }
 }
 

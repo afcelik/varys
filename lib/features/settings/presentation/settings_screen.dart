@@ -4,13 +4,13 @@ import 'package:go_router/go_router.dart';
 import 'dart:developer';
 
 import 'package:varys/core/network/api_client.dart';
-import 'package:varys/core/router/app_router.dart';
 import 'package:varys/core/storage/secure_storage.dart';
+import 'package:varys/features/auth/domain/auth_notifier.dart';
 
 /// Settings screen for configuring app settings.
 ///
-/// Allows user to set server URL and change local app password.
-/// API token is loaded from .env file.
+/// Allows user to set server URL and log out.
+/// API token is managed by backend authentication (JWT).
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -67,7 +67,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       // Invalidate providers to recreate ApiClient with new settings
       ref.invalidate(apiClientProvider);
       ref.invalidate(serverUrlProvider);
-      ref.invalidate(apiTokenProvider);
+      ref.invalidate(authTokenProvider);
     }
   }
 
@@ -81,10 +81,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     try {
       // Create a temporary ApiClient with the entered settings
-      final apiToken = await SecureStorage.getApiToken();
+      final authToken = await SecureStorage.getAuthToken();
       final tempClient = ApiClient(
         baseUrl: _serverUrlController.text.trim(),
-        authToken: apiToken,
+        authToken: authToken,
       );
 
       final success = await tempClient.testConnection();
@@ -107,8 +107,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  void _navigateToChangePassword() {
-    context.push(AppRouter.changePasswordPath);
+  Future<void> _logout() async {
+    // Confirm logout
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Çıkış Yap'),
+        content: const Text('Oturumu kapatmak istediğinizden emin misiniz?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('İptal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Çıkış Yap'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    // Logout via AuthNotifier
+    await ref.read(authNotifierProvider.notifier).logout();
+
+    // Navigate to login - router will handle redirect
+    if (mounted) {
+      context.go('/login');
+    }
   }
 
   @override
@@ -219,33 +246,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   const SizedBox(height: 24),
                 ],
 
-                // Security Section
-                Text(
-                  'Güvenlik',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                OutlinedButton.icon(
-                  onPressed: _navigateToChangePassword,
-                  icon: const Icon(Icons.lock),
-                  label: const Text('Uygulama Şifresi Değiştir'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                Text(
-                  'Uygulama kilit şifresini değiştirmek için tıklayın. Mevcut şifre doğrulanır.',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
-                ),
-                const SizedBox(height: 24),
-
                 // Save Button
                 FilledButton(
                   onPressed: _saveSettings,
@@ -255,6 +255,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   child: const Text('Kaydet'),
                 ),
                 const SizedBox(height: 32),
+
+                // Account Section
+                Text(
+                  'Hesap',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Logout Button
+                OutlinedButton.icon(
+                  onPressed: _logout,
+                  icon: const Icon(Icons.logout),
+                  label: const Text('Çıkış Yap'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    foregroundColor: theme.colorScheme.error,
+                    side: BorderSide(color: theme.colorScheme.error),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                Text(
+                  'Oturumunuzu kapatır ve giriş sayfasına yönlendirir. Sunucu adresi saklanır.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+                const SizedBox(height: 24),
 
                 // Info Section
                 Card(
@@ -282,8 +312,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         const SizedBox(height: 12),
                         Text(
                           '• Sunucu adresi güvenli bir şekilde cihazınızda saklanır\n'
-                          '• Backend API token .env dosyasından okunur (API_TOKEN)\n'
-                          '• Uygulama şifresi .env dosyasından (APP_PASSWORD) veya ayarlardan yönetilir\n'
+                          '• JWT token güvenli depoda (Keychain/Keystore) saklanır\n'
+                          '• Token süresi dolduğunda (30 gün) otomatik çıkış yapılır\n'
                           '• AI sağlayıcıları (NVIDIA vb.) için API anahtarları asla istemciye gönderilmez\n'
                           '• Tüm AI etkileşimleri backend üzerinden güvenli bir şekilde gerçekleşir',
                           style: theme.textTheme.bodyMedium?.copyWith(
