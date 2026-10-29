@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:varys/core/network/api_client.dart';
 import 'package:varys/core/storage/secure_storage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter/services.dart';
 import 'auth_state.dart';
 
 /// Riverpod provider for AuthNotifier.
@@ -65,7 +67,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
     required String serverUrl,
     required String password,
   }) async {
-    debugPrint('AUTH_NOTIFIER: login() called with serverUrl=$serverUrl, password length=${password.length}');
     state = const AuthLoading();
 
     try {
@@ -89,44 +90,74 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
           // Update state
           state = AuthAuthenticated(token);
-          debugPrint('AUTH_NOTIFIER: login() success - returning true');
           return true;
         }
       }
 
       // Unexpected response
       state = const AuthError('Beklenmeyen sunucu yanıtı');
-      debugPrint('AUTH_NOTIFIER: login() failed - unexpected response, returning false');
       return false;
     } on Exception catch (e) {
       // Handle DioException and other errors
-      final errorMessage = _mapErrorToTurkish(e);
+      final errorMessage = AuthNotifier.mapErrorToTurkish(e);
       state = AuthError(errorMessage);
-      debugPrint('AUTH_NOTIFIER: login() exception caught: ${e.runtimeType} - $e, mapped to: $errorMessage, returning false');
       return false;
     }
   }
 
   /// Maps exceptions to Turkish error messages.
-  String _mapErrorToTurkish(Exception e) {
-    final errorString = e.toString();
+  ///
+  /// This method maps based on exception type and properties, NOT string matching.
+  /// - DioException: maps by type and response statusCode
+  /// - PlatformException: secure storage access issues
+  /// - Other exceptions: generic error message with debug logging
+  ///
+  /// This is exposed as a static method for unit testing.
+  static String mapErrorToTurkish(Exception e) {
+    // Handle DioException (network/HTTP errors)
+    if (e is DioException) {
+      final statusCode = e.response?.statusCode;
 
-    if (errorString.contains('401') || errorString.contains('Unauthorized')) {
-      return 'Yanlış şifre';
+      // Map by HTTP status code
+      if (statusCode == 401) {
+        return 'Yanlış şifre';
+      }
+      if (statusCode == 429) {
+        return 'Çok fazla deneme. Lütfen 15 dakika bekleyin.';
+      }
+      if (statusCode != null) {
+        return 'Sunucu hatası ($statusCode)';
+      }
+
+      // Map by DioExceptionType (connection/timeout errors)
+      switch (e.type) {
+        case DioExceptionType.connectionError:
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+          return 'Sunucuya bağlanılamıyor. Lütfen adresi ve bağlantınızı kontrol edin.';
+        case DioExceptionType.badResponse:
+          // Status code already handled above, but handle unexpected cases
+          return 'Sunucu hatası (${e.response?.statusCode ?? 'bilinmiyor'})';
+        case DioExceptionType.cancel:
+          return 'İstek iptal edildi';
+        case DioExceptionType.badCertificate:
+          return 'Güvenlik sertifikası hatası';
+        case DioExceptionType.unknown:
+      case DioExceptionType.transformTimeout:
+          return 'Sunucuya bağlanılamıyor. Lütfen adresi ve bağlantınızı kontrol edin.';
+      }
     }
-    if (errorString.contains('429') || errorString.contains('Too Many Requests')) {
-      return 'Çok fazla deneme. Lütfen 15 dakika bekleyin.';
+
+    // Handle PlatformException (secure storage, etc.)
+    if (e is PlatformException) {
+      debugPrint('PlatformException caught: code=${e.code}, message=${e.message}, details=${e.details}');
+      return 'Güvenli depolama erişilemiyor. Lütfen uygulama izinlerini kontrol edin.';
     }
-    if (errorString.contains('Connection refused') ||
-        errorString.contains('Failed host lookup') ||
-        errorString.contains('SocketException') ||
-        errorString.contains('HttpException')) {
-      return 'Sunucuya bağlanılamıyor. Adresi kontrol edin.';
-    }
-    if (errorString.contains('Timeout')) {
-      return 'Sunucu yanıt vermiyor (zaman aşımı)';
-    }
-    return 'Giriş hatası: ${e.toString()}';
+
+    // Unexpected errors - log details but show generic message
+    debugPrint('Unexpected error during login: ${e.runtimeType} - $e');
+    return 'Giriş sırasında bir hata oluştu';
   }
 
   /// Logs out the user - clears token and returns to unauthenticated state.
