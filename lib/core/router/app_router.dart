@@ -53,6 +53,9 @@ class AppRouter {
         case varysChatPath:
           screen = const VarysChatScreen();
           break;
+        case settingsPath:
+          screen = const SettingsScreen();
+          break;
         default:
           screen = const HomeScreen();
       }
@@ -109,14 +112,6 @@ class AppRouter {
           name: 'login',
           pageBuilder: (context, state) => const NoTransitionPage(
             child: LoginPage(),
-          ),
-        ),
-        // Settings route (outside the shell - full screen)
-        GoRoute(
-          path: settingsPath,
-          name: 'settings',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: SettingsScreen(),
           ),
         ),
         // Main app shell with navigation
@@ -183,20 +178,18 @@ class NavigationDestinationItem {
   final IconData icon;
   final IconData? selectedIcon;
   final String routePath;
-  final bool isExternalRoute; // Route outside the StatefulShellRoute (e.g., Settings)
 
   const NavigationDestinationItem({
     required this.label,
     required this.icon,
     this.selectedIcon,
     required this.routePath,
-    this.isExternalRoute = false,
   });
 }
 
 /// Navigation destinations configuration
 class NavigationDestinations {
-  // Shell destinations (managed by StatefulShellRoute)
+  // All destinations (managed by StatefulShellRoute)
   static const List<NavigationDestinationItem> _shellDestinations = [
     NavigationDestinationItem(
       label: 'Ana Sayfa',
@@ -228,32 +221,18 @@ class NavigationDestinations {
       selectedIcon: Icons.smart_toy,
       routePath: AppRouter.varysChatPath,
     ),
-  ];
-
-  // External destinations (full-screen routes outside the shell)
-  static const List<NavigationDestinationItem> _externalDestinations = [
     NavigationDestinationItem(
       label: 'Ayarlar',
       icon: Icons.settings_outlined,
       selectedIcon: Icons.settings,
       routePath: AppRouter.settingsPath,
-      isExternalRoute: true,
     ),
   ];
-
-  /// All destinations combined (shell + external)
-  static List<NavigationDestinationItem> get allDestinations => [
-        ..._shellDestinations,
-        ..._externalDestinations,
-      ];
 
   /// Only shell destinations (for StatefulShellRoute branches)
   static List<NavigationDestinationItem> get shellDestinations => _shellDestinations;
 
-  /// Only external destinations (for bottom rail trailing, etc.)
-  static List<NavigationDestinationItem> get externalDestinations => _externalDestinations;
-
-  static List<NavigationDestination> get navigationDestinations => allDestinations
+  static List<NavigationDestination> get navigationDestinations => shellDestinations
       .map((d) => NavigationDestination(
             icon: Icon(d.icon),
             selectedIcon: d.selectedIcon != null ? Icon(d.selectedIcon!) : null,

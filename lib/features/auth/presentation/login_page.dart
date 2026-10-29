@@ -295,45 +295,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                             )
                           : const Text('Giriş Yap', style: TextStyle(fontSize: 16)),
                     ),
-                    const SizedBox(height: 32),
-
-                    // Info Section
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.info_outline,
-                                  color: theme.colorScheme.primary,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Bilgi',
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              '• Şifre asla cihazda saklanmaz, sadece oturum açmak için kullanılır\n'
-                              '• JWT token güvenli depoda (Keychain/Keystore) saklanır\n'
-                              '• Tüm API istekleri "Authorization: Bearer <token>" header ile yapılır\n'
-                              '• Token süresi dolduğunda otomatik çıkış yapılır',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
