@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:developer' as dev;
+import 'package:flutter/foundation.dart';
 
 import '../storage/secure_storage.dart';
 
@@ -38,6 +40,18 @@ class ApiClient {
         error: true,
       ),
     );
+
+    // TEMPORARY: Debug interceptor for logging all requests and errors
+    _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (RequestOptions options, RequestInterceptorHandler handler) {
+        debugPrint('DIO_REQUEST: ${options.method} ${options.uri}');
+        return handler.next(options);
+      },
+      onError: (DioException error, ErrorInterceptorHandler handler) {
+        debugPrint('DIO_ERROR: type=${error.type}, message=${error.message}, statusCode=${error.response?.statusCode}');
+        return handler.next(error);
+      },
+    ));
 
     // Add 401 interceptor for token expiry handling
     _dio.interceptors.add(InterceptorsWrapper(
@@ -100,10 +114,14 @@ class ApiClient {
 
   /// Makes a POST request for login.
   Future<Response<Map<String, dynamic>>> login(String password) async {
-    return _dio.post<Map<String, dynamic>>(
+    // DEBUG: Log request details (NEVER print password itself)
+    dev.log('Login request: URL=${_dio.options.baseUrl}/auth/login, password length=${password.length}', name: 'ApiClient');
+    final response = await _dio.post<Map<String, dynamic>>(
       '/auth/login',
       data: {'password': password},
     );
+    dev.log('Login response: statusCode=${response.statusCode}', name: 'ApiClient');
+    return response;
   }
 
   /// Makes a GET request.

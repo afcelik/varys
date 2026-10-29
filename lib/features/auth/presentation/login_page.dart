@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'dart:developer' as dev;
+
 import 'package:varys/core/storage/secure_storage.dart';
 import 'package:varys/features/auth/domain/auth_notifier.dart';
 import 'package:varys/features/auth/domain/auth_state.dart';
@@ -63,7 +65,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) return;
+    debugPrint('LOGIN: _login called');
+    if (!_formKey.currentState!.validate()) {
+      debugPrint('LOGIN: Form validation failed');
+      return;
+    }
 
     // Prevent double clicks
     if (_isLoading) return;
@@ -77,6 +83,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         ? _serverUrlController.text.trim()
         : await SecureStorage.getServerUrl();
     final password = _passwordController.text;
+
+    debugPrint('LOGIN: serverUrl=$serverUrl, password length=${password.length}');
+
+    // DEBUG: Log password length (never print password itself)
+    dev.log('Login attempt: serverUrl=$serverUrl, password length=${password.length}', name: 'LoginPage');
 
     // Clear password from memory immediately after getting it
     final success = await ref.read(authNotifierProvider.notifier).login(

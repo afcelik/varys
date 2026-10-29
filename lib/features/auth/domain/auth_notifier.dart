@@ -6,6 +6,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:varys/core/network/api_client.dart';
 import 'package:varys/core/storage/secure_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'auth_state.dart';
 
 /// Riverpod provider for AuthNotifier.
@@ -64,6 +65,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     required String serverUrl,
     required String password,
   }) async {
+    debugPrint('AUTH_NOTIFIER: login() called with serverUrl=$serverUrl, password length=${password.length}');
     state = const AuthLoading();
 
     try {
@@ -87,17 +89,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
           // Update state
           state = AuthAuthenticated(token);
+          debugPrint('AUTH_NOTIFIER: login() success - returning true');
           return true;
         }
       }
 
       // Unexpected response
       state = const AuthError('Beklenmeyen sunucu yanıtı');
+      debugPrint('AUTH_NOTIFIER: login() failed - unexpected response, returning false');
       return false;
     } on Exception catch (e) {
       // Handle DioException and other errors
       final errorMessage = _mapErrorToTurkish(e);
       state = AuthError(errorMessage);
+      debugPrint('AUTH_NOTIFIER: login() exception caught: ${e.runtimeType} - $e, mapped to: $errorMessage, returning false');
       return false;
     }
   }
