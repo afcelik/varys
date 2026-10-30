@@ -25,7 +25,6 @@ class MainScaffold extends StatelessWidget {
 
         // Handler for rail destination selection (wide screen)
         void onRailDestinationSelected(int index) {
-          // Rail shows all shell destinations (including Settings), so index maps directly
           navigationShell.goBranch(
             index,
             initialLocation: index == navigationShell.currentIndex,
@@ -84,15 +83,9 @@ class MainScaffold extends StatelessWidget {
   Widget? _buildBottomNavigationBar(
       BuildContext context, void Function(int) onDestinationSelected) {
     return NavigationBar(
-      selectedIndex: _getSelectedNavBarIndex(),
+      selectedIndex: navigationShell.currentIndex,
       onDestinationSelected: onDestinationSelected,
       destinations: NavigationDestinations.navigationDestinations,
     );
-  }
-
-  /// Maps the shell's current index to the bottom nav bar destination index.
-  /// Bottom nav bar includes all destinations (now 6 including Settings).
-  int _getSelectedNavBarIndex() {
-    return navigationShell.currentIndex;
   }
 }

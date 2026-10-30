@@ -6,6 +6,7 @@ import 'dart:developer';
 import 'package:varys/core/network/api_client.dart';
 import 'package:varys/core/storage/secure_storage.dart';
 import 'package:varys/features/auth/domain/auth_notifier.dart';
+import 'package:varys/shared/widgets/back_arrow.dart';
 
 /// Settings screen for configuring app settings.
 ///
@@ -144,6 +145,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: context.backArrowLeading(),
         title: const Text('Ayarlar'),
         centerTitle: true,
       ),

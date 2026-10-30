@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:varys/shared/widgets/back_arrow.dart';
 
 /// Notes screen - personal notes and documentation
 class NotesScreen extends StatelessWidget {
@@ -8,6 +9,7 @@ class NotesScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: context.backArrowLeading(),
         title: const Text('Notlar'),
       ),
       body: const Center(

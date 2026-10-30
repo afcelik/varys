@@ -34,27 +34,18 @@ class AppRouter {
     // Note: We don't use initial state here, redirect reads current state on each call
     ref.read(authNotifierProvider);
 
-    // Build shell branches dynamically from shared destinations
+    // Build shell branches dynamically from shared destinations (only 3: Home, Planning, Varys)
     final shellBranches = NavigationDestinations.shellDestinations.map((dest) {
       Widget screen;
       switch (dest.routePath) {
         case homePath:
           screen = const HomeScreen();
           break;
-        case inboxPath:
-          screen = const InboxScreen();
-          break;
         case planningPath:
           screen = const PlanningScreen();
           break;
-        case notesPath:
-          screen = const NotesScreen();
-          break;
         case varysChatPath:
           screen = const VarysChatScreen();
-          break;
-        case settingsPath:
-          screen = const SettingsScreen();
           break;
         default:
           screen = const HomeScreen();
@@ -85,12 +76,11 @@ class AppRouter {
         final currentAuthState = ref.read(authNotifierProvider);
 
         final isLoginRoute = state.matchedLocation == loginPath;
-        final isSettingsRoute = state.matchedLocation == settingsPath;
 
-        // Allow access to login and settings without auth
-        if (isLoginRoute || isSettingsRoute) {
+        // Allow access to login without auth
+        if (isLoginRoute) {
           // If already authenticated and trying to access login, redirect to home
-          if (isLoginRoute && currentAuthState is AuthAuthenticated) {
+          if (currentAuthState is AuthAuthenticated) {
             return homePath;
           }
           return null;
@@ -114,7 +104,29 @@ class AppRouter {
             child: LoginPage(),
           ),
         ),
-        // Main app shell with navigation
+        // Full-screen pages outside the shell (accessed via push from Home)
+        GoRoute(
+          path: notesPath,
+          name: 'notes',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: NotesScreen(),
+          ),
+        ),
+        GoRoute(
+          path: inboxPath,
+          name: 'inbox',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: InboxScreen(),
+          ),
+        ),
+        GoRoute(
+          path: settingsPath,
+          name: 'settings',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: SettingsScreen(),
+          ),
+        ),
+        // Main app shell with navigation (3 tabs: Home, Planning, Varys)
         StatefulShellRoute.indexedStack(
           builder: (context, state, navigationShell) {
             return MainScaffold(navigationShell: navigationShell);
@@ -189,7 +201,7 @@ class NavigationDestinationItem {
 
 /// Navigation destinations configuration
 class NavigationDestinations {
-  // All destinations (managed by StatefulShellRoute)
+  // Shell destinations (managed by StatefulShellRoute) - Only 3: Home, Planning, Varys
   static const List<NavigationDestinationItem> _shellDestinations = [
     NavigationDestinationItem(
       label: 'Ana Sayfa',
@@ -198,34 +210,16 @@ class NavigationDestinations {
       routePath: AppRouter.homePath,
     ),
     NavigationDestinationItem(
-      label: 'Gelen Kutusu',
-      icon: Icons.inbox_outlined,
-      selectedIcon: Icons.inbox,
-      routePath: AppRouter.inboxPath,
-    ),
-    NavigationDestinationItem(
       label: 'Planlama',
       icon: Icons.calendar_today_outlined,
       selectedIcon: Icons.calendar_today,
       routePath: AppRouter.planningPath,
     ),
     NavigationDestinationItem(
-      label: 'Notlar',
-      icon: Icons.note_outlined,
-      selectedIcon: Icons.note,
-      routePath: AppRouter.notesPath,
-    ),
-    NavigationDestinationItem(
       label: 'Varys',
       icon: Icons.smart_toy_outlined,
       selectedIcon: Icons.smart_toy,
       routePath: AppRouter.varysChatPath,
-    ),
-    NavigationDestinationItem(
-      label: 'Ayarlar',
-      icon: Icons.settings_outlined,
-      selectedIcon: Icons.settings,
-      routePath: AppRouter.settingsPath,
     ),
   ];
 

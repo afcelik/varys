@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:varys/shared/widgets/back_arrow.dart';
 
 /// Inbox screen - incoming items and notifications
 class InboxScreen extends StatelessWidget {
@@ -8,6 +9,7 @@ class InboxScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: context.backArrowLeading(),
         title: const Text('Gelen Kutusu'),
       ),
       body: const Center(
