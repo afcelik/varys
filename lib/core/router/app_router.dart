@@ -5,6 +5,7 @@ import 'package:varys/features/auth/domain/auth_notifier.dart';
 import 'package:varys/features/auth/domain/auth_state.dart';
 import 'package:varys/features/auth/presentation/login_page.dart';
 import 'package:varys/features/home/presentation/home_screen.dart';
+import 'package:varys/features/home/presentation/focus_task_selection_page.dart';
 import 'package:varys/features/inbox/presentation/inbox_screen.dart';
 import 'package:varys/features/notes/presentation/notes_screen.dart';
 import 'package:varys/features/planning/presentation/planning_screen.dart';
@@ -28,6 +29,7 @@ class AppRouter {
   static const String varysChatPath = '/varys-chat';
   static const String settingsPath = '/settings';
   static const String loginPath = '/login';
+  static const String focusTaskSelectionPath = '/focus-task-selection';
 
   static GoRouter createRouter(Ref ref) {
     // Get the initial auth state
@@ -124,6 +126,14 @@ class AppRouter {
           name: 'settings',
           pageBuilder: (context, state) => const NoTransitionPage(
             child: SettingsScreen(),
+          ),
+        ),
+        // Focus task selection page (outside shell, full screen, accessed via push)
+        GoRoute(
+          path: focusTaskSelectionPath,
+          name: 'focus-task-selection',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: FocusTaskSelectionPage(),
           ),
         ),
         // Main app shell with navigation (3 tabs: Home, Planning, Varys)

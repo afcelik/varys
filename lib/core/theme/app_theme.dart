@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 /// - Background: #141517 (deep dark)
 /// - Surface: #1C1D20 (elevated surfaces)
 /// - Accent: #5DCAA5 (teal accent for primary actions)
+/// - Amber (for "Say no" card): Highlight #EF9F27, Background #33260D, Border #5A4214
 class AppTheme {
   static const Color _background = Color(0xFF141517);
   static const Color _surface = Color(0xFF1C1D20);
@@ -16,6 +17,11 @@ class AppTheme {
   static const Color _onAccent = Color(0xFF000000);
   static const Color _outline = Color(0xFF3A3B3E);
   static const Color _outlineVariant = Color(0xFF2A2B2E);
+
+  // Amber color constants for "Say no" card
+  static const Color amberHighlight = Color(0xFFEF9F27);
+  static const Color amberCardBackground = Color(0xFF33260D);
+  static const Color amberBorder = Color(0xFF5A4214);
 
   static ThemeData get darkTheme {
     final ColorScheme colorScheme = ColorScheme(
