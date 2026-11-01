@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:varys/features/home/data/daily_plan_repository.dart';
 import 'package:varys/features/home/domain/daily_plan.dart';
@@ -11,7 +12,7 @@ class DailyPlanNotifier extends AutoDisposeAsyncNotifier<DailyPlan> {
     final repository = await ref.watch(dailyPlanRepositoryProvider.future);
     final result = await repository.getPlan(today);
     return result.fold(
-      (failure) => throw Exception(failure.message),
+      (failure) => throw failure,
       (plan) => plan,
     );
   }
@@ -40,7 +41,10 @@ class DailyPlanNotifier extends AutoDisposeAsyncNotifier<DailyPlan> {
     result.fold(
       (failure) {
         // On error, restore previous state and show error
-        state = AsyncError(Exception(failure.message), StackTrace.current);
+        if (kDebugMode) {
+          debugPrint('DailyPlanNotifier.updatePlan error: ${failure.runtimeType} - $failure');
+        }
+        state = AsyncError(failure, StackTrace.current);
       },
       (plan) {
         // Update state with the returned plan from server

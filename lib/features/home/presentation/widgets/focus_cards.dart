@@ -78,7 +78,7 @@ class MainFocusCard extends ConsumerWidget {
     context.push(AppRouter.focusTaskSelectionPath).then((result) {
       if (result != null && result is Task) {
         ref.read(dailyPlanProvider.notifier).updatePlan(
-              mainFocusTaskId: int.tryParse(result.id),
+              mainFocusTaskId: result.id,
             );
       }
       // If null (user backed out), do nothing - no change
@@ -164,7 +164,7 @@ class SideFocusCard extends ConsumerWidget {
     context.push(AppRouter.focusTaskSelectionPath).then((result) {
       if (result != null && result is Task) {
         ref.read(dailyPlanProvider.notifier).updatePlan(
-              sideFocusTaskId: int.tryParse(result.id),
+              sideFocusTaskId: result.id,
             );
       }
     });
@@ -224,10 +224,10 @@ class _FocusTaskTile extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                if (!compact && task.description.isNotEmpty) ...[
+                if (!compact && task.description?.isNotEmpty == true) ...[
                   const SizedBox(height: 4),
                   Text(
-                    task.description,
+                    task.description!,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                     ),

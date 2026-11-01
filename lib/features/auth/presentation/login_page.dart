@@ -14,6 +14,7 @@ import 'package:varys/features/auth/domain/auth_state.dart';
 /// Show/hide icon in password field.
 /// Button loading status, prevent double clicks.
 /// Error messages in Turkish: wrong password, server unreachable, too many attempts (429).
+/// Session expired banner when redirected due to 401.
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
 
@@ -120,6 +121,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final authState = ref.watch(authNotifierProvider);
+    final showSessionExpiredBanner = authState is AuthUnauthenticated && authState.sessionExpired;
 
     return Scaffold(
       body: SafeArea(
@@ -144,6 +147,39 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 48),
+
+                    // Session Expired Banner
+                    if (showSessionExpiredBanner) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              color: theme.colorScheme.primary,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Oturum süresi doldu, lütfen tekrar giriş yapın',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
 
                     // Server Address Field (only on first startup or when "Change server" clicked)
                     if (_showServerField) ...[

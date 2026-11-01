@@ -1,5 +1,6 @@
 import 'package:dartz/dartz.dart' hide Task;
-import 'package:varys/features/planning/domain/task.dart';
+import 'package:varys/core/errors/failure.dart';
+import 'package:varys/features/planning/domain/task.dart' show Task, TaskFilter, TaskStatus;
 
 /// Abstract repository interface for Task operations
 ///
@@ -19,53 +20,8 @@ abstract class TaskRepository {
   Future<Either<Failure, Task>> updateTask(Task task);
 
   /// Deletes a task by ID
-  Future<Either<Failure, void>> deleteTask(String id);
+  Future<Either<Failure, void>> deleteTask(int id);
 
-  /// Toggles task completion status
-  Future<Either<Failure, Task>> toggleCompletion(String id);
-}
-
-/// Failure class for handling errors in a functional way
-sealed class Failure {
-  const Failure();
-
-  String get message => switch (this) {
-        ServerFailure(:final message) => message,
-        NetworkFailure(:final message) => 'Bağlantı hatası: $message',
-        CacheFailure(:final message) => 'Önbellek hatası: $message',
-        UnknownFailure(:final message) => 'Bilinmeyen hata: $message',
-      };
-}
-
-/// Server-side error (HTTP errors, validation errors, etc.)
-class ServerFailure extends Failure {
-  const ServerFailure(this.message, {this.statusCode});
-
-  @override
-  final String message;
-  final int? statusCode;
-}
-
-/// Network connectivity error
-class NetworkFailure extends Failure {
-  const NetworkFailure(this.message);
-
-  @override
-  final String message;
-}
-
-/// Local cache/storage error
-class CacheFailure extends Failure {
-  const CacheFailure(this.message);
-
-  @override
-  final String message;
-}
-
-/// Unknown/unexpected error
-class UnknownFailure extends Failure {
-  const UnknownFailure(this.message);
-
-  @override
-  final String message;
+  /// Updates task status
+  Future<Either<Failure, Task>> updateTaskStatus(int id, TaskStatus status);
 }

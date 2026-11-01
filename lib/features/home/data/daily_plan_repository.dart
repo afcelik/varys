@@ -1,46 +1,12 @@
 import 'package:dio/dio.dart';
 import 'package:dartz/dartz.dart' hide Task;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:varys/core/errors/failure.dart';
 import 'package:varys/core/network/api_client.dart';
 import 'package:varys/features/home/data/date_utils.dart';
 import 'package:varys/features/home/domain/daily_plan.dart';
 import 'package:varys/features/planning/domain/task.dart';
-
-/// Failure class for handling errors in a functional way
-sealed class DailyPlanFailure {
-  const DailyPlanFailure();
-
-  String get message => switch (this) {
-        DailyPlanServerFailure(:final message) => message,
-        DailyPlanNetworkFailure(:final message) => 'Bağlantı hatası: $message',
-        DailyPlanUnknownFailure(:final message) => 'Bilinmeyen hata: $message',
-      };
-}
-
-/// Server-side error (HTTP errors, validation errors, etc.)
-class DailyPlanServerFailure extends DailyPlanFailure {
-  const DailyPlanServerFailure(this.message, {this.statusCode});
-
-  @override
-  final String message;
-  final int? statusCode;
-}
-
-/// Network connectivity error
-class DailyPlanNetworkFailure extends DailyPlanFailure {
-  const DailyPlanNetworkFailure(this.message);
-
-  @override
-  final String message;
-}
-
-/// Unknown/unexpected error
-class DailyPlanUnknownFailure extends DailyPlanFailure {
-  const DailyPlanUnknownFailure(this.message);
-
-  @override
-  final String message;
-}
 
 /// Repository for DailyPlan operations
 class DailyPlanRepository {
@@ -51,7 +17,7 @@ class DailyPlanRepository {
   static const String _basePath = '/daily-plans';
 
   /// Fetches the daily plan for the given date
-  Future<Either<DailyPlanFailure, DailyPlan>> getPlan(DateTime day) async {
+  Future<Either<Failure, DailyPlan>> getPlan(DateTime day) async {
     try {
       final dateStr = formatDateForApi(day);
       final response = await _apiClient.get<Map<String, dynamic>>('$_basePath/$dateStr');
@@ -87,8 +53,12 @@ class DailyPlanRepository {
       return Right(plan);
     } on DioException catch (e) {
       return Left(_handleDioError(e));
-    } catch (e) {
-      return Left(DailyPlanUnknownFailure(e.toString()));
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('DailyPlanRepository.getPlan error: $e');
+        debugPrint('Stack trace: $stackTrace');
+      }
+      return Left(UnknownFailure(e.toString()));
     }
   }
 
@@ -96,7 +66,7 @@ class DailyPlanRepository {
   /// Only non-null fields are included in the request.
   /// To clear a field, explicitly pass null.
   /// Returns the updated plan from the server response.
-  Future<Either<DailyPlanFailure, DailyPlan>> updatePlan(
+  Future<Either<Failure, DailyPlan>> updatePlan(
     DateTime day, {
     int? mainFocusTaskId,
     int? sideFocusTaskId,
@@ -106,13 +76,7 @@ class DailyPlanRepository {
       final dateStr = formatDateForApi(day);
 
       // Build request body with only explicitly provided fields
-      // We use a Map and only add keys that were explicitly passed
       final Map<String, dynamic> requestBody = {};
-
-      // Note: The way Dart works, we can't distinguish between "not provided" and "explicitly null"
-      // from the caller's perspective without using a special sentinel value.
-      // The API expects fields to be present to update them, and null to clear them.
-      // The caller (DailyPlanNotifier) will only call this with fields that actually changed.
 
       if (mainFocusTaskId != null) {
         requestBody['main_focus_task_id'] = mainFocusTaskId;
@@ -158,27 +122,64 @@ class DailyPlanRepository {
       return Right(plan);
     } on DioException catch (e) {
       return Left(_handleDioError(e));
-    } catch (e) {
-      return Left(DailyPlanUnknownFailure(e.toString()));
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('DailyPlanRepository.updatePlan error: $e');
+        debugPrint('Stack trace: $stackTrace');
+      }
+      return Left(UnknownFailure(e.toString()));
     }
   }
 
-  DailyPlanFailure _handleDioError(DioException e) {
+  Failure _handleDioError(DioException e) {
+    final statusCode = e.response?.statusCode;
+
     switch (e.type) {
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
-        return DailyPlanNetworkFailure('İstek zaman aşımına uğradı');
+        return const NetworkFailure('İstek zaman aşımına uğradı');
       case DioExceptionType.badResponse:
-        final statusCode = e.response?.statusCode;
-        final message = e.response?.data?['detail'] ?? 'Sunucu hatası: $statusCode';
-        return DailyPlanServerFailure(message, statusCode: statusCode);
+        // For 422 on DailyPlan PUT, the backend may return specific messages
+        // about task already being main/side focus. We preserve those.
+        if (statusCode == 422) {
+          final detail = e.response?.data?['detail'];
+          if (detail is String && detail.isNotEmpty) {
+            // Check if it's a specific task assignment conflict message
+            if (detail.contains('main focus') || detail.contains('ana odak') ||
+                detail.contains('side focus') || detail.contains('yan odak') ||
+                detail.contains('already assigned') || detail.contains('zaten atanmış')) {
+              return ServerFailure(detail, statusCode: 422);
+            }
+          }
+        }
+        // Use fixed Turkish messages for all other cases
+        switch (statusCode) {
+          case 401:
+            return const ServerFailure('Oturum süresi doldu. Lütfen tekrar giriş yapın.', statusCode: 401);
+          case 403:
+            return const ServerFailure('Yetkisiz erişim.', statusCode: 403);
+          case 404:
+            return const ServerFailure('Kaynak bulunamadı.', statusCode: 404);
+          case 422:
+            return const ServerFailure('Gönderilen veriler geçersiz.', statusCode: 422);
+          case 429:
+            return const ServerFailure('Çok fazla deneme. Lütfen 15 dakika bekleyin.', statusCode: 429);
+          default:
+            if (statusCode != null && statusCode >= 500) {
+              return ServerFailure('Sunucu hatası. Lütfen daha sonra tekrar deneyin.', statusCode: statusCode);
+            }
+            return ServerFailure('Bir hata oluştu. Lütfen tekrar deneyin.', statusCode: statusCode);
+        }
       case DioExceptionType.cancel:
-        return DailyPlanNetworkFailure('İstek iptal edildi');
+        return const NetworkFailure('İstek iptal edildi');
       case DioExceptionType.connectionError:
-        return DailyPlanNetworkFailure('Sunucuya bağlanılamıyor');
-      default:
-        return DailyPlanNetworkFailure(e.message ?? 'Bilinmeyen ağ hatası');
+        return const NetworkFailure('Sunucuya bağlanılamıyor. Lütfen adresi ve bağlantınızı kontrol edin.');
+      case DioExceptionType.badCertificate:
+        return const NetworkFailure('Güvenlik sertifikası hatası');
+      case DioExceptionType.unknown:
+      case DioExceptionType.transformTimeout:
+        return const NetworkFailure('Beklenmeyen bir hata oluştu');
     }
   }
 }

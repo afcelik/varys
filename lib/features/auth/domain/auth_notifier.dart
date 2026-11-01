@@ -6,6 +6,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:varys/core/network/api_client.dart';
 import 'package:varys/core/storage/secure_storage.dart';
+import 'package:varys/features/home/data/daily_plan_repository.dart';
+import 'package:varys/features/home/presentation/providers/daily_plan_provider.dart';
+import 'package:varys/features/planning/data/task_repository_impl.dart';
+import 'package:varys/features/planning/presentation/task_notifier.dart';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
@@ -22,12 +26,41 @@ final authNotifierProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref
 /// - AuthInitial -> (load) -> AuthAuthenticated | AuthUnauthenticated
 /// - AuthUnauthenticated -> (login) -> AuthLoading -> AuthAuthenticated | AuthError
 /// - AuthAuthenticated -> (logout) -> AuthUnauthenticated
+/// - AuthAuthenticated -> (handleSessionExpired) -> AuthUnauthenticated(sessionExpired: true)
 /// - AuthError -> (retry) -> AuthUnauthenticated
 ///
 /// Extends StateNotifier (which extends ChangeNotifier) for GoRouter refreshListenable.
 class AuthNotifier extends StateNotifier<AuthState> {
   AuthNotifier() : super(const AuthInitial()) {
     _loadStoredToken();
+  }
+
+  /// Handles session expiration (401 from protected endpoint).
+  ///
+  /// Only acts if currently authenticated. This prevents:
+  /// - Duplicate logout when multiple parallel requests get 401
+  /// - Late 401 from old token after user has logged in again
+  ///
+  /// Returns true if session was expired (was authenticated), false otherwise.
+  Future<bool> handleSessionExpired(dynamic ref) async {
+    // Only handle if currently authenticated - prevents duplicate/multiple calls
+    if (state is! AuthAuthenticated) {
+      return false;
+    }
+
+    await SecureStorage.clearAuthToken();
+
+    // Invalidate user-data providers so old data doesn't persist after re-login
+    ref.invalidate(dailyPlanProvider);
+    ref.invalidate(taskRepositoryProvider);
+    ref.invalidate(taskListNotifierProvider);
+    ref.invalidate(dailyPlanRepositoryProvider);
+    ref.invalidate(apiClientProvider);
+    ref.invalidate(dioProvider);
+    ref.invalidate(authTokenProvider);
+
+    state = const AuthUnauthenticated(sessionExpired: true);
+    return true;
   }
 
   /// Loads stored JWT token from secure storage on app startup.
@@ -163,7 +196,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// Logs out the user - clears token and returns to unauthenticated state.
   Future<void> logout() async {
     await SecureStorage.clearAuthToken();
-    state = const AuthUnauthenticated();
+    state = const AuthUnauthenticated(sessionExpired: false);
   }
 
   /// Updates the stored token (e.g., after token refresh).

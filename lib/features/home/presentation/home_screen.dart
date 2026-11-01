@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:varys/core/errors/error_utils.dart';
 import 'package:varys/core/router/app_router.dart';
 import 'package:varys/features/home/domain/today_provider.dart';
 import 'package:varys/features/home/presentation/providers/daily_plan_provider.dart';
@@ -36,7 +37,7 @@ class HomeScreen extends ConsumerWidget {
         child: dailyPlanAsync.when(
           data: (plan) => _buildPlanContent(context, theme, today, plan),
           loading: () => _buildLoadingContent(context),
-          error: (error, stack) => _buildErrorContent(context, ref, error.toString()),
+          error: (error, stack) => _buildErrorContent(context, ref, userMessage(error)),
         ),
       ),
     );

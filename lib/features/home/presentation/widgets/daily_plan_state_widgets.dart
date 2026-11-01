@@ -10,6 +10,7 @@ class DailyPlanLoading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         _DateHeaderSkeleton(),
         const SizedBox(height: 16),
@@ -57,10 +58,10 @@ class _FocusCardSkeleton extends StatelessWidget {
           color: theme.colorScheme.outlineVariant,
         ),
       ),
-      child: Container(
-        height: isMain ? 140 : 100,
+      child: Padding(
         padding: EdgeInsets.all(isMain ? 20 : 16),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
@@ -102,6 +103,7 @@ class _SayNoCardSkeleton extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
@@ -139,6 +141,7 @@ class DailyPlanError extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         _DateHeaderSkeleton(),
         const SizedBox(height: 16),
@@ -154,6 +157,7 @@ class DailyPlanError extends ConsumerWidget {
           child: Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
                   Icons.error_outline,
@@ -200,6 +204,7 @@ class DailyPlanEmpty extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         DateHeader(date: date),
         const SizedBox(height: 16),

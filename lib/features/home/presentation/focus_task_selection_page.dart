@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:varys/core/errors/error_utils.dart';
 import 'package:varys/features/planning/data/task_repository_impl.dart';
-import 'package:varys/features/planning/domain/task.dart';
-import 'package:varys/features/planning/domain/task_repository.dart';
+import 'package:varys/features/planning/domain/task.dart' show Task, TaskFilter;
+import 'package:varys/features/planning/domain/task.dart' as task_ext;
+import 'package:varys/features/planning/domain/task_repository.dart' show TaskRepository;
 import 'package:varys/shared/widgets/back_arrow.dart';
 
 /// Full-screen page for selecting a focus task.
@@ -15,7 +17,6 @@ class FocusTaskSelectionPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     final taskRepositoryAsync = ref.watch(taskRepositoryProvider);
 
     return Scaffold(
@@ -26,31 +27,63 @@ class FocusTaskSelectionPage extends ConsumerWidget {
       body: taskRepositoryAsync.when(
         data: (taskRepository) => _TaskListView(taskRepository: taskRepository),
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, size: 64, color: Colors.red),
-              const SizedBox(height: 16),
-              Text(
-                'Görevler yüklenemedi',
-                style: theme.textTheme.headlineSmall,
+        error: (error, stack) => _ErrorView(
+          message: userMessage(error),
+          onRetry: () => ref.invalidate(taskRepositoryProvider),
+        ),
+      ),
+    );
+  }
+}
+
+/// Error view for failed states
+class _ErrorView extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ErrorView({
+    required this.message,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: theme.colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Bir hata oluştu',
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w600,
               ),
-              const SizedBox(height: 8),
-              Text(
-                error.toString(),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                textAlign: TextAlign.center,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () => ref.invalidate(taskRepositoryProvider),
-                child: const Text('Tekrar Dene'),
-              ),
-            ],
-          ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Tekrar Dene'),
+            ),
+          ],
         ),
       ),
     );
@@ -73,14 +106,18 @@ class _TaskListView extends ConsumerWidget {
         }
 
         if (snapshot.hasError) {
-          return Center(
-            child: Text('Hata: ${snapshot.error}'),
+          return _ErrorView(
+            message: userMessage(snapshot.error!),
+            onRetry: () => ref.invalidate(taskRepositoryProvider),
           );
         }
 
         final result = snapshot.data!;
         return result.fold(
-          (failure) => Center(child: Text(failure.message)),
+          (failure) => _ErrorView(
+            message: userMessage(failure),
+            onRetry: () => ref.invalidate(taskRepositoryProvider),
+          ),
           (inProgressTasks) => _buildTaskList(context, inProgressTasks, ref),
         );
       },
@@ -93,6 +130,10 @@ class _TaskListView extends ConsumerWidget {
       future: taskRepository.getTasksByFilter(TaskFilter.completed),
       builder: (context, completedSnapshot) {
         if (completedSnapshot.connectionState == ConnectionState.waiting) {
+          return _buildListWithTasks(context, inProgressTasks, [], Theme.of(context));
+        }
+
+        if (completedSnapshot.hasError) {
           return _buildListWithTasks(context, inProgressTasks, [], Theme.of(context));
         }
 
@@ -173,7 +214,7 @@ class _TaskListView extends ConsumerWidget {
         if (taskIndex >= allTasks.length) return const SizedBox.shrink();
 
         final task = allTasks[taskIndex];
-        final isCompleted = task.isCompleted;
+        final isCompleted = task.isCompleted; // Uses TaskStatusExtension
 
         return ListTile(
           leading: Icon(
@@ -191,9 +232,9 @@ class _TaskListView extends ConsumerWidget {
               decoration: isCompleted ? TextDecoration.lineThrough : null,
             ),
           ),
-          subtitle: task.description.isNotEmpty
+          subtitle: task.description?.isNotEmpty == true
               ? Text(
-                  task.description,
+                  task.description!,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                   ),

@@ -24,7 +24,11 @@ class AuthAuthenticated extends AuthState {
 
 /// Unauthenticated state - no valid token (needs login).
 class AuthUnauthenticated extends AuthState {
-  const AuthUnauthenticated();
+  const AuthUnauthenticated({this.sessionExpired = false});
+
+  /// Whether this unauthenticated state was caused by session expiration (401).
+  /// When true, the login screen shows a "session expired" message.
+  final bool sessionExpired;
 }
 
 /// Error state - login failed with error message.

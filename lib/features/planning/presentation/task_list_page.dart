@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:varys/core/errors/error_utils.dart';
 import 'package:varys/features/planning/domain/task.dart';
-import 'package:varys/features/planning/domain/task_repository.dart';
 import 'package:varys/features/planning/presentation/task_notifier.dart';
 
 /// Task list page - main planning screen with task management
@@ -17,42 +17,47 @@ class _TaskListPageState extends ConsumerState<TaskListPage> {
   Widget build(BuildContext context) {
     final state = ref.watch(taskListNotifierProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Planlama'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => ref.read(taskListNotifierProvider.notifier).refreshTasks(),
-            tooltip: 'Yenile',
-          ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
-          child: _FilterTabs(
-            currentFilter: state.value?.currentFilter ?? TaskFilter.all,
-            onFilterChanged: (filter) {
-              ref.read(taskListNotifierProvider.notifier).changeFilter(filter);
-            },
-          ),
-        ),
+    return state.when(
+      loading: () => const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
       ),
-      body: state.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => _ErrorView(
-          message: error is Failure ? error.message : error.toString(),
+      error: (error, stack) => Scaffold(
+        appBar: AppBar(title: const Text('Planlama')),
+        body: _ErrorView(
+          message: userMessage(error),
           onRetry: () => ref.read(taskListNotifierProvider.notifier).refreshTasks(),
         ),
-        data: (taskState) => _TaskListView(
+      ),
+      data: (taskState) => Scaffold(
+        appBar: AppBar(
+          title: const Text('Planlama'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () => ref.read(taskListNotifierProvider.notifier).refreshTasks(),
+              tooltip: 'Yenile',
+            ),
+          ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(48),
+            child: _FilterTabs(
+              currentFilter: taskState.currentFilter,
+              onFilterChanged: (filter) {
+                ref.read(taskListNotifierProvider.notifier).changeFilter(filter);
+              },
+            ),
+          ),
+        ),
+        body: _TaskListView(
           tasks: taskState.tasks.value ?? [],
           onToggle: (id) => ref.read(taskListNotifierProvider.notifier).toggleTaskCompletion(id),
           onDelete: (id) => ref.read(taskListNotifierProvider.notifier).deleteTask(id),
         ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddTaskDialog(context, ref),
-        icon: const Icon(Icons.add),
-        label: const Text('Yeni Görev'),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: () => _showAddTaskDialog(context, ref),
+          icon: const Icon(Icons.add),
+          label: const Text('Yeni Görev'),
+        ),
       ),
     );
   }
@@ -99,15 +104,14 @@ class _TaskListPageState extends ConsumerState<TaskListPage> {
               final title = titleController.text.trim();
               if (title.isEmpty) return;
 
-              final now = DateTime.now();
               final task = Task(
-                id: '',
+                id: 0,
                 title: title,
                 description: descriptionController.text.trim(),
-                isCompleted: false,
-                createdAt: now,
-                updatedAt: now,
-                completedAt: null,
+                status: TaskStatus.todo,
+                createdAt: DateTime.now(),
+                updatedAt: DateTime.now(),
+                deletedAt: null,
               );
 
               ref.read(taskListNotifierProvider.notifier).addTask(task);
@@ -157,8 +161,8 @@ class _FilterTabs extends StatelessWidget {
 /// Task list view
 class _TaskListView extends StatelessWidget {
   final List<Task> tasks;
-  final ValueChanged<String> onToggle;
-  final ValueChanged<String> onDelete;
+  final ValueChanged<int> onToggle;
+  final ValueChanged<int> onDelete;
 
   const _TaskListView({
     required this.tasks,
@@ -261,9 +265,9 @@ class _TaskTile extends StatelessWidget {
                   : theme.colorScheme.onSurface,
             ),
           ),
-          subtitle: task.description.isNotEmpty
+          subtitle: task.description?.isNotEmpty == true
               ? Text(
-                  task.description,
+                  task.description!,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium?.copyWith(

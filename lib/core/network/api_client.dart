@@ -1,7 +1,9 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../storage/secure_storage.dart';
+import '../../features/auth/domain/auth_notifier.dart'; // For authNotifierProvider
 
 /// Dio-based API client for communicating with the Varys backend.
 ///
@@ -10,9 +12,16 @@ import '../storage/secure_storage.dart';
 /// Includes interceptor for automatic 401 handling (token expiry).
 class ApiClient {
   late final Dio _dio;
+  final String? _authToken;
+  final Future<void> Function()? _onSessionExpired;
 
   /// Creates an ApiClient with the given base URL and optional auth token.
-  ApiClient({required String baseUrl, String? authToken}) {
+  ApiClient({
+    required String baseUrl,
+    String? authToken,
+    Future<void> Function()? onSessionExpired,
+  }) : _authToken = authToken,
+       _onSessionExpired = onSessionExpired {
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
@@ -29,23 +38,45 @@ class ApiClient {
       _dio.options.headers['Authorization'] = 'Bearer $authToken';
     }
 
-    _dio.interceptors.add(
-      LogInterceptor(
-        requestBody: true,
-        responseBody: true,
-        requestHeader: true,
-        responseHeader: false,
-        error: true,
-      ),
-    );
+    // Add logging interceptor only in debug mode
+    if (kDebugMode) {
+      _dio.interceptors.add(
+        LogInterceptor(
+          request: true,
+          requestHeader: false,
+          requestBody: false,
+          responseHeader: false,
+          responseBody: false,
+          error: true,
+        ),
+      );
+    }
 
     // Add 401 interceptor for token expiry handling
     _dio.interceptors.add(InterceptorsWrapper(
       onError: (DioException error, ErrorInterceptorHandler handler) async {
-        if (error.response?.statusCode == 401) {
-          // Token expired or invalid - clear it
-          await SecureStorage.clearAuthToken();
-          // The AuthNotifier will pick up the change and redirect to login
+        if (error.response?.statusCode == 401 && _onSessionExpired != null) {
+          // Check if this is a login request - don't trigger logout for wrong password
+          final requestPath = error.requestOptions.path;
+          if (requestPath == '/auth/login') {
+            return handler.next(error);
+          }
+
+          // Check if request has Authorization header
+          final requestAuthHeader = error.requestOptions.headers['Authorization'];
+          if (requestAuthHeader == null) {
+            return handler.next(error);
+          }
+
+          // Extract token from request header
+          final requestToken = requestAuthHeader.toString().replaceFirst('Bearer ', '');
+
+          // Compare with current session token
+          if (requestToken == _authToken) {
+            // Token matches current session - trigger session expired
+            await _onSessionExpired();
+          }
+          // If tokens don't match, it's a late 401 from old token after re-login - ignore
         }
         return handler.next(error);
       },
@@ -57,6 +88,19 @@ class ApiClient {
     final baseUrl = await SecureStorage.getServerUrl();
     final authToken = await SecureStorage.getAuthToken();
     return ApiClient(baseUrl: baseUrl, authToken: authToken);
+  }
+
+  /// Creates an ApiClient from stored credentials with session expiry callback.
+  static Future<ApiClient> fromStorageWithCallback(
+    String baseUrl,
+    String? authToken,
+    Future<void> Function() onSessionExpired,
+  ) async {
+    return ApiClient(
+      baseUrl: baseUrl,
+      authToken: authToken,
+      onSessionExpired: onSessionExpired,
+    );
   }
 
   /// Creates a login client (no auth token) for authentication requests.
@@ -136,8 +180,16 @@ class ApiClient {
 ///
 /// This provider creates an ApiClient instance from stored credentials.
 /// It uses a FutureProvider since reading from secure storage is async.
+/// The onSessionExpired callback is evaluated at call time to avoid circular dependency.
 final apiClientProvider = FutureProvider<ApiClient>((ref) async {
-  return await ApiClient.fromStorage();
+  final baseUrl = await SecureStorage.getServerUrl();
+  final authToken = await SecureStorage.getAuthToken();
+
+  return ApiClient.fromStorageWithCallback(
+    baseUrl,
+    authToken,
+    () => ref.read(authNotifierProvider.notifier).handleSessionExpired(ref),
+  );
 });
 
 /// Riverpod provider for the Dio instance (for direct access if needed).

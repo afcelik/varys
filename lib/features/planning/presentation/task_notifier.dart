@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:varys/features/planning/data/task_repository_impl.dart';
 import 'package:varys/features/planning/domain/task.dart';
-import 'package:varys/features/planning/domain/task_repository.dart';
+import 'package:varys/features/planning/domain/task_repository.dart' show TaskRepository;
 
 /// State for the TaskList page
 class TaskListState {
@@ -30,15 +30,15 @@ class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
   Future<TaskListState> build() async {
     final repository = await ref.watch(taskRepositoryProvider.future);
     final tasks = await _loadTasks(repository, TaskFilter.all);
-    return TaskListState(tasks: tasks, currentFilter: TaskFilter.all);
+    return TaskListState(tasks: AsyncValue.data(tasks), currentFilter: TaskFilter.all);
   }
 
   /// Load tasks based on filter
-  Future<AsyncValue<List<Task>>> _loadTasks(TaskRepository repository, TaskFilter filter) async {
+  Future<List<Task>> _loadTasks(TaskRepository repository, TaskFilter filter) async {
     final result = await repository.getTasksByFilter(filter);
     return result.fold(
-      (failure) => AsyncValue.error(failure, StackTrace.current),
-      (tasks) => AsyncValue.data(tasks),
+      (failure) => throw failure,
+      (tasks) => tasks,
     );
   }
 
@@ -48,7 +48,7 @@ class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
     state = AsyncValue.data(state.value!.copyWith(currentFilter: filter));
     final tasks = await _loadTasks(repository, filter);
     state = AsyncValue.data(
-      state.value!.copyWith(tasks: tasks),
+      state.value!.copyWith(tasks: AsyncValue.data(tasks)),
     );
   }
 
@@ -71,18 +71,18 @@ class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
     }
   }
 
-  /// Toggle task completion
-  Future<void> toggleTaskCompletion(String taskId) async {
+  /// Toggle task completion (status change)
+  Future<void> toggleTaskCompletion(int taskId) async {
     final repository = await ref.watch(taskRepositoryProvider.future);
     final currentTasks = state.value?.tasks.value ?? [];
     final taskIndex = currentTasks.indexWhere((t) => t.id == taskId);
     if (taskIndex == -1) return;
 
     final task = currentTasks[taskIndex];
+    final newStatus = task.isCompleted ? TaskStatus.todo : TaskStatus.done;
     final updatedTask = task.copyWith(
-      isCompleted: !task.isCompleted,
+      status: newStatus,
       updatedAt: DateTime.now(),
-      completedAt: !task.isCompleted ? DateTime.now() : null,
     );
 
     // Optimistic update
@@ -97,7 +97,7 @@ class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
     );
 
     try {
-      final result = await repository.toggleCompletion(taskId);
+      final result = await repository.updateTaskStatus(taskId, newStatus);
       await result.fold(
         (failure) async {
           // Revert on failure
@@ -122,7 +122,7 @@ class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
   }
 
   /// Delete a task
-  Future<void> deleteTask(String taskId) async {
+  Future<void> deleteTask(int taskId) async {
     final repository = await ref.watch(taskRepositoryProvider.future);
     final currentTasks = state.value?.tasks.value ?? [];
     final taskIndex = currentTasks.indexWhere((t) => t.id == taskId);
@@ -160,7 +160,7 @@ class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
     final filter = state.value?.currentFilter ?? TaskFilter.all;
     final tasks = await _loadTasks(repository, filter);
     state = AsyncValue.data(
-      state.value!.copyWith(tasks: tasks),
+      state.value!.copyWith(tasks: AsyncValue.data(tasks)),
     );
   }
 }
