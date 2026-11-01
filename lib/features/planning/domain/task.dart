@@ -39,10 +39,11 @@ extension TaskCreation on Task {
     TaskStatus status = TaskStatus.todo,
     DateTime? plannedDate,
     DateTime? dueDate,
+    int id = 0, // Allow explicit ID for temporary tasks (e.g., -1, -2, -3)
   }) {
     final now = DateTime.now();
     return Task(
-      id: 0,
+      id: id,
       title: title,
       description: description,
       status: status,

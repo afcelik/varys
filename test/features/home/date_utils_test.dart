@@ -50,4 +50,73 @@ void main() {
       expect(result, contains('October'));
     });
   });
+
+  group('plannedDateForApi', () {
+    test('formats date as YYYY-MM-DDT00:00:00 (naive datetime)', () {
+      final date = DateTime(2026, 11, 1);
+      expect(plannedDateForApi(date), equals('2026-11-01T00:00:00'));
+    });
+
+    test('formats date with time component - time is zeroed', () {
+      final date = DateTime(2026, 11, 1, 15, 30, 45);
+      expect(plannedDateForApi(date), equals('2026-11-01T00:00:00'));
+    });
+
+    test('handles single digit month and day', () {
+      final date = DateTime(2026, 1, 5);
+      expect(plannedDateForApi(date), equals('2026-01-05T00:00:00'));
+    });
+
+    test('handles year boundary', () {
+      final date = DateTime(2025, 12, 31);
+      expect(plannedDateForApi(date), equals('2025-12-31T00:00:00'));
+    });
+  });
+
+  group('dayOnly', () {
+    test('extracts year/month/day from DateTime without timezone conversion', () {
+      final dateTime = DateTime(2026, 11, 1, 15, 30, 45);
+      final result = dayOnly(dateTime);
+      expect(result.year, equals(2026));
+      expect(result.month, equals(11));
+      expect(result.day, equals(1));
+      expect(result.hour, equals(0));
+      expect(result.minute, equals(0));
+      expect(result.second, equals(0));
+    });
+
+    test('returns correct day for 23:50 local time', () {
+      // 23:50 on Nov 1 should still be Nov 1
+      final dateTime = DateTime(2026, 11, 1, 23, 50);
+      final result = dayOnly(dateTime);
+      expect(result.day, equals(1));
+      expect(result.month, equals(11));
+      expect(result.year, equals(2026));
+    });
+
+    test('returns correct day for 00:10 local time', () {
+      // 00:10 on Nov 1 should be Nov 1
+      final dateTime = DateTime(2026, 11, 1, 0, 10);
+      final result = dayOnly(dateTime);
+      expect(result.day, equals(1));
+      expect(result.month, equals(11));
+      expect(result.year, equals(2026));
+    });
+
+    test('parses "2026-11-01T00:00:00" as November 1st', () {
+      final dateTime = DateTime.parse('2026-11-01T00:00:00');
+      final result = dayOnly(dateTime);
+      expect(result.day, equals(1));
+      expect(result.month, equals(11));
+      expect(result.year, equals(2026));
+    });
+
+    test('parses datetime with time and extracts correct day', () {
+      final dateTime = DateTime.parse('2026-11-01T15:30:00');
+      final result = dayOnly(dateTime);
+      expect(result.day, equals(1));
+      expect(result.month, equals(11));
+      expect(result.year, equals(2026));
+    });
+  });
 }

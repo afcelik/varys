@@ -11,6 +11,7 @@ import 'package:varys/features/home/presentation/widgets/say_no_card.dart';
 import 'package:varys/features/home/presentation/widgets/daily_plan_state_widgets.dart';
 import 'package:varys/features/home/presentation/widgets/inbox_card.dart';
 import 'package:varys/features/home/presentation/widgets/random_note_card.dart';
+import 'package:varys/features/home/presentation/widgets/daily_tasks_card.dart';
 
 /// Home screen - main dashboard view with "Today" mode
 class HomeScreen extends ConsumerWidget {
@@ -89,6 +90,8 @@ class HomeScreen extends ConsumerWidget {
                   SideFocusCard(plan: plan),
                   const SizedBox(height: 12),
                   SayNoCard(plan: plan),
+                  const SizedBox(height: 12),
+                  DailyTasksCard(plan: plan),
                 ],
               ),
             ),
@@ -116,6 +119,8 @@ class HomeScreen extends ConsumerWidget {
         SideFocusCard(plan: plan),
         const SizedBox(height: 12),
         SayNoCard(plan: plan),
+        const SizedBox(height: 12),
+        DailyTasksCard(plan: plan),
         const SizedBox(height: 24),
         _buildPlaceholderCards(context, theme),
       ],

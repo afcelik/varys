@@ -1,0 +1,78 @@
+{
+  "id": 2,
+  "plan_date": "2026-11-01",
+  "main_focus_task_id": 3,
+  "side_focus_task_id": null,
+  "say_no_text": null,
+  "created_at": "2026-11-01T06:26:40",
+  "updated_at": "2026-11-01T06:26:40",
+  "main_focus": {
+    "title": "Ana odak görevi",
+    "description": "Ana odak için açıklama",
+    "status": "todo",
+    "due_date": null,
+    "planned_date": "2026-11-01T00:00:00",
+    "id": 3,
+    "created_at": "2026-10-31T18:30:10",
+    "updated_at": "2026-10-31T18:30:10",
+    "deleted_at": null
+  },
+  "side_focus": null,
+  "tasks": [
+    {
+      "title": "İlk görev - yapılacak",
+      "description": "Açıklama 1",
+      "status": "todo",
+      "due_date": null,
+      "planned_date": "2026-11-01T00:00:00",
+      "id": 1,
+      "created_at": "2026-11-01T10:00:00",
+      "updated_at": "2026-11-01T10:00:00",
+      "deleted_at": null
+    },
+    {
+      "title": "İkinci görev - devam ediyor",
+      "description": "Açıklama 2",
+      "status": "in_progress",
+      "due_date": null,
+      "planned_date": "2026-11-01T00:00:00",
+      "id": 2,
+      "created_at": "2026-11-01T11:00:00",
+      "updated_at": "2026-11-01T11:00:00",
+      "deleted_at": null
+    },
+    {
+      "title": "Üçüncü görev - tamamlandı",
+      "description": "Açıklama 3",
+      "status": "done",
+      "due_date": null,
+      "planned_date": "2026-11-01T00:00:00",
+      "id": 3,
+      "created_at": "2026-11-01T12:00:00",
+      "updated_at": "2026-11-01T12:00:00",
+      "deleted_at": null
+    },
+    {
+      "title": "Dördüncü görev - yapılacak",
+      "description": null,
+      "status": "todo",
+      "due_date": null,
+      "planned_date": "2026-11-01T00:00:00",
+      "id": 4,
+      "created_at": "2026-11-01T13:00:00",
+      "updated_at": "2026-11-01T13:00:00",
+      "deleted_at": null
+    },
+    {
+      "title": "Beşinci görev - tamamlandı",
+      "description": "Son görev",
+      "status": "done",
+      "due_date": null,
+      "planned_date": "2026-11-01T00:00:00",
+      "id": 5,
+      "created_at": "2026-11-01T14:00:00",
+      "updated_at": "2026-11-01T14:00:00",
+      "deleted_at": null
+    }
+  ]
+}
