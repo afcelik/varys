@@ -9,6 +9,7 @@ import 'package:varys/features/home/presentation/focus_task_selection_page.dart'
 import 'package:varys/features/inbox/presentation/inbox_screen.dart';
 import 'package:varys/features/notes/presentation/notes_screen.dart';
 import 'package:varys/features/planning/presentation/planning_screen.dart';
+import 'package:varys/features/routines/presentation/routines_screen.dart';
 import 'package:varys/features/settings/presentation/settings_screen.dart';
 import 'package:varys/features/varys_chat/presentation/varys_chat_screen.dart';
 import 'package:varys/shared/widgets/main_scaffold.dart';
@@ -30,6 +31,7 @@ class AppRouter {
   static const String settingsPath = '/settings';
   static const String loginPath = '/login';
   static const String focusTaskSelectionPath = '/focus-task-selection';
+  static const String routinesPath = '/routines';
 
   static GoRouter createRouter(Ref ref) {
     // Get the initial auth state
@@ -119,6 +121,13 @@ class AppRouter {
           name: 'inbox',
           pageBuilder: (context, state) => const NoTransitionPage(
             child: InboxScreen(),
+          ),
+        ),
+        GoRoute(
+          path: routinesPath,
+          name: 'routines',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: RoutinesScreen(),
           ),
         ),
         GoRoute(

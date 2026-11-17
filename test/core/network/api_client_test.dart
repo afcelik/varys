@@ -29,7 +29,7 @@ void main() {
       final apiClient = await ApiClient.fromStorageWithCallback(
         baseUrl,
         testToken,
-        () async {},
+        (_) async {},
       );
 
       // Verify the client is created with the callback

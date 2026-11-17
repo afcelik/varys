@@ -131,7 +131,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (confirmed != true) return;
 
     // Logout via AuthNotifier
-    await ref.read(authNotifierProvider.notifier).logout();
+    await ref.read(authNotifierProvider.notifier).logout(ref.invalidate);
 
     // Navigate to login - router will handle redirect
     if (mounted) {

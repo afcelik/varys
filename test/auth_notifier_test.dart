@@ -245,7 +245,7 @@ void main() {
 
     test('when not authenticated -> returns false, does not change state', () async {
       final notifier = container.read(authNotifierProvider.notifier);
-      final result = await notifier.handleSessionExpired(container);
+      final result = await notifier.handleSessionExpired(container, requestToken: 'a.b.c');
 
       expect(result, isFalse);
       expect(container.read(authNotifierProvider), isA<AuthUnauthenticated>());

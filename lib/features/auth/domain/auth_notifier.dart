@@ -10,6 +10,8 @@ import 'package:varys/features/home/data/daily_plan_repository.dart';
 import 'package:varys/features/home/presentation/providers/daily_plan_provider.dart';
 import 'package:varys/features/planning/data/task_repository_impl.dart';
 import 'package:varys/features/planning/presentation/task_notifier.dart';
+import 'package:varys/features/routines/data/routine_repository_impl.dart';
+import 'package:varys/features/routines/presentation/routines_day_notifier.dart';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
@@ -19,6 +21,11 @@ import 'auth_state.dart';
 ///
 /// Uses StateNotifierProvider which provides a Listenable notifier.
 final authNotifierProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) => AuthNotifier());
+
+/// Typed `invalidate` callback. `Ref.invalidate`, `WidgetRef.invalidate` and
+/// `ProviderContainer.invalidate` all match it, so callers pass a tear-off
+/// (e.g. `ref.invalidate`) without sharing a common type or using `dynamic`.
+typedef ProviderInvalidator = void Function(ProviderOrFamily provider);
 
 /// AuthNotifier manages authentication state.
 ///
@@ -35,29 +42,53 @@ class AuthNotifier extends StateNotifier<AuthState> {
     _loadStoredToken();
   }
 
+  /// The single list of providers that hold user data. Invalidated when the
+  /// session ends (expiry or logout) so no old data or old error state is
+  /// shown after the next login.
+  static void invalidateUserData(ProviderInvalidator invalidate) {
+    invalidate(dailyPlanProvider);
+    invalidate(dailyPlanRepositoryProvider);
+    invalidate(taskListNotifierProvider);
+    invalidate(taskRepositoryProvider);
+    invalidate(routinesForDayProvider);
+    invalidate(routineRepositoryProvider);
+  }
+
+  /// Identity infrastructure (not user data). `apiClientProvider` also
+  /// rebuilds on its own when the session token changes; this is an explicit
+  /// extra reset at session end.
+  static void invalidateSessionInfra(ProviderInvalidator invalidate) {
+    invalidate(apiClientProvider);
+    invalidate(dioProvider);
+    invalidate(authTokenProvider);
+  }
+
   /// Handles session expiration (401 from protected endpoint).
   ///
-  /// Only acts if currently authenticated. This prevents:
+  /// [requestToken] is the token the failed request carried. Only acts if
+  /// currently authenticated AND that token is the current session token.
+  /// This prevents:
   /// - Duplicate logout when multiple parallel requests get 401
   /// - Late 401 from old token after user has logged in again
   ///
   /// Returns true if session was expired (was authenticated), false otherwise.
-  Future<bool> handleSessionExpired(dynamic ref) async {
+  Future<bool> handleSessionExpired(dynamic ref, {required String requestToken}) async {
     // Only handle if currently authenticated - prevents duplicate/multiple calls
-    if (state is! AuthAuthenticated) {
+    final current = state;
+    if (current is! AuthAuthenticated) {
+      return false;
+    }
+    // A 401 for a token that is no longer the session token is stale - ignore
+    if (current.token != requestToken) {
       return false;
     }
 
     await SecureStorage.clearAuthToken();
 
     // Invalidate user-data providers so old data doesn't persist after re-login
-    ref.invalidate(dailyPlanProvider);
-    ref.invalidate(taskRepositoryProvider);
-    ref.invalidate(taskListNotifierProvider);
-    ref.invalidate(dailyPlanRepositoryProvider);
-    ref.invalidate(apiClientProvider);
-    ref.invalidate(dioProvider);
-    ref.invalidate(authTokenProvider);
+    final ProviderInvalidator invalidate = ref.invalidate;
+    invalidateUserData(invalidate);
+    invalidateSessionInfra(invalidate);
 
     state = const AuthUnauthenticated(sessionExpired: true);
     return true;
@@ -193,9 +224,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
     return 'Giriş sırasında bir hata oluştu';
   }
 
-  /// Logs out the user - clears token and returns to unauthenticated state.
-  Future<void> logout() async {
+  /// Logs out the user - clears token, invalidates user data and session
+  /// infrastructure (when [invalidate] is given), then returns to
+  /// unauthenticated state.
+  Future<void> logout([ProviderInvalidator? invalidate]) async {
     await SecureStorage.clearAuthToken();
+    if (invalidate != null) {
+      invalidateUserData(invalidate);
+      invalidateSessionInfra(invalidate);
+    }
     state = const AuthUnauthenticated(sessionExpired: false);
   }
 

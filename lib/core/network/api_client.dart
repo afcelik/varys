@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../storage/secure_storage.dart';
 import '../../features/auth/domain/auth_notifier.dart'; // For authNotifierProvider
+import '../../features/auth/domain/auth_state.dart';
 
 /// Dio-based API client for communicating with the Varys backend.
 ///
@@ -12,16 +13,17 @@ import '../../features/auth/domain/auth_notifier.dart'; // For authNotifierProvi
 /// Includes interceptor for automatic 401 handling (token expiry).
 class ApiClient {
   late final Dio _dio;
-  final String? _authToken;
-  final Future<void> Function()? _onSessionExpired;
+
+  /// Called on a 401 with the token the failed request carried. The receiver
+  /// decides whether that token is still the current session's token.
+  final Future<void> Function(String requestToken)? _onSessionExpired;
 
   /// Creates an ApiClient with the given base URL and optional auth token.
   ApiClient({
     required String baseUrl,
     String? authToken,
-    Future<void> Function()? onSessionExpired,
-  }) : _authToken = authToken,
-       _onSessionExpired = onSessionExpired {
+    Future<void> Function(String requestToken)? onSessionExpired,
+  }) : _onSessionExpired = onSessionExpired {
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
@@ -71,12 +73,9 @@ class ApiClient {
           // Extract token from request header
           final requestToken = requestAuthHeader.toString().replaceFirst('Bearer ', '');
 
-          // Compare with current session token
-          if (requestToken == _authToken) {
-            // Token matches current session - trigger session expired
-            await _onSessionExpired();
-          }
-          // If tokens don't match, it's a late 401 from old token after re-login - ignore
+          // The receiver compares it with the CURRENT session token; a late
+          // 401 from an old token after re-login is ignored there.
+          await _onSessionExpired(requestToken);
         }
         return handler.next(error);
       },
@@ -94,7 +93,7 @@ class ApiClient {
   static Future<ApiClient> fromStorageWithCallback(
     String baseUrl,
     String? authToken,
-    Future<void> Function() onSessionExpired,
+    Future<void> Function(String requestToken) onSessionExpired,
   ) async {
     return ApiClient(
       baseUrl: baseUrl,
@@ -178,17 +177,34 @@ class ApiClient {
 
 /// Riverpod provider for the ApiClient.
 ///
-/// This provider creates an ApiClient instance from stored credentials.
-/// It uses a FutureProvider since reading from secure storage is async.
-/// The onSessionExpired callback is evaluated at call time to avoid circular dependency.
+/// The token comes from the auth state (single source of truth), so the client
+/// is rebuilt whenever the session token changes (login, logout, expiry).
+/// The server URL is read from storage.
+///
+/// A client replaced by a token change may still receive a late 401; its
+/// callback then does nothing (its provider instance is disposed). The token
+/// check in [AuthNotifier.handleSessionExpired] is a second safety layer.
 final apiClientProvider = FutureProvider<ApiClient>((ref) async {
+  final authToken = ref.watch(
+    authNotifierProvider.select((s) => s is AuthAuthenticated ? s.token : null),
+  );
+  var disposed = false;
+  ref.onDispose(() => disposed = true);
+
   final baseUrl = await SecureStorage.getServerUrl();
-  final authToken = await SecureStorage.getAuthToken();
 
   return ApiClient.fromStorageWithCallback(
     baseUrl,
     authToken,
-    () => ref.read(authNotifierProvider.notifier).handleSessionExpired(ref),
+    (requestToken) async {
+      if (disposed) return;
+      // Pass the container, not this provider's ref: handleSessionExpired
+      // invalidates apiClientProvider, and a provider may not invalidate
+      // itself through its own ref (debug assertion "cannot depend on itself").
+      await ref
+          .read(authNotifierProvider.notifier)
+          .handleSessionExpired(ref.container, requestToken: requestToken);
+    },
   );
 });
 
