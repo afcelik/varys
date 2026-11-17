@@ -12,6 +12,7 @@ import 'package:varys/core/errors/failure.dart';
 import 'package:varys/core/router/app_router.dart';
 import 'package:varys/features/home/data/daily_plan_repository.dart';
 import 'package:varys/features/home/domain/daily_plan.dart';
+import 'package:varys/features/home/domain/plan_field.dart';
 import 'package:varys/features/home/domain/today_provider.dart';
 import 'package:varys/features/home/presentation/home_screen.dart';
 import 'package:varys/features/home/presentation/widgets/daily_plan_state_widgets.dart';
@@ -52,6 +53,51 @@ class _StubSelectionPage extends StatelessWidget {
       );
 }
 
+/// Hand-written fake: records each PUT body (built with the same
+/// [DailyPlanRepository.buildUpdateBody] the real PUT uses) and applies it
+/// like the server does (absent key = keep, null = clear).
+class _FakeDailyPlanRepository extends Fake implements DailyPlanRepository {
+  _FakeDailyPlanRepository(this.plan);
+
+  DailyPlan plan;
+  Failure? failure;
+  final bodies = <Map<String, dynamic>>[];
+
+  @override
+  Future<Either<Failure, DailyPlan>> getPlan(DateTime day) async => Right(plan);
+
+  @override
+  Future<Either<Failure, DailyPlan>> updatePlan(
+    DateTime day, {
+    PlanField<int> mainFocusTaskId = const PlanField.unset(),
+    PlanField<int> sideFocusTaskId = const PlanField.unset(),
+    PlanField<String> sayNoText = const PlanField.unset(),
+  }) async {
+    final body = DailyPlanRepository.buildUpdateBody(
+      mainFocusTaskId: mainFocusTaskId,
+      sideFocusTaskId: sideFocusTaskId,
+      sayNoText: sayNoText,
+    );
+    bodies.add(body);
+    if (failure != null) return Left(failure!);
+
+    Task? byId(Object? id) =>
+        id == null ? null : plan.tasks.firstWhere((t) => t.id == id);
+    plan = DailyPlan(
+      planDate: plan.planDate,
+      mainFocus: body.containsKey('main_focus_task_id')
+          ? byId(body['main_focus_task_id'])
+          : plan.mainFocus,
+      sideFocus: body.containsKey('side_focus_task_id')
+          ? byId(body['side_focus_task_id'])
+          : plan.sideFocus,
+      sayNoText: body.containsKey('say_no_text') ? body['say_no_text'] as String? : plan.sayNoText,
+      tasks: plan.tasks,
+    );
+    return Right(plan);
+  }
+}
+
 void main() {
   late _MockDailyPlanRepository repo;
   late DailyPlan plan;
@@ -60,6 +106,8 @@ void main() {
   setUpAll(() async {
     await initializeDateFormatting('tr_TR', null);
     registerFallbackValue(DateTime(2000));
+    registerFallbackValue(const PlanField<int>.unset());
+    registerFallbackValue(const PlanField<String>.unset());
   });
 
   setUp(() {
@@ -86,7 +134,7 @@ void main() {
         ));
   }
 
-  Future<void> pumpHome(WidgetTester tester) async {
+  Future<void> pumpHome(WidgetTester tester, {DailyPlanRepository? repository}) async {
     tester.view.physicalSize = const Size(790, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -103,7 +151,7 @@ void main() {
     await tester.pumpWidget(ProviderScope(
       overrides: [
         todayProvider.overrideWith(_FixedToday.new),
-        dailyPlanRepositoryProvider.overrideWith((ref) async => repo),
+        dailyPlanRepositoryProvider.overrideWith((ref) async => repository ?? repo),
       ],
       child: MaterialApp.router(routerConfig: router),
     ));
@@ -169,7 +217,7 @@ void main() {
 
       await pickFocus(tester, 'İkincil odak seç', plan.tasks[3]);
 
-      verify(() => repo.updatePlan(_planDay, sideFocusTaskId: 4)).called(1);
+      verify(() => repo.updatePlan(_planDay, sideFocusTaskId: const PlanField.set(4))).called(1);
       expect(
         find.widgetWithText(SnackBar, 'Plan güncellenemedi. Lütfen seçimi kontrol edin.'),
         findsOneWidget,
@@ -219,7 +267,7 @@ void main() {
 
       // 1) Save fails: text stays, Turkish snackbar
       await typeAndBlur(tester, 'Toplantılar');
-      verify(() => repo.updatePlan(_planDay, sayNoText: 'Toplantılar')).called(1);
+      verify(() => repo.updatePlan(_planDay, sayNoText: const PlanField.set('Toplantılar'))).called(1);
       expect(tester.widget<TextField>(sayNoField()).controller!.text, 'Toplantılar');
       expect(find.widgetWithText(SnackBar, 'Bağlantı hatası'), findsOneWidget);
       expectNoErrorScreenOrEnglish();
@@ -229,13 +277,102 @@ void main() {
       await tester.pumpAndSettle();
       fail = false;
       await refocusAndBlur(tester);
-      verify(() => repo.updatePlan(_planDay, sayNoText: 'Toplantılar')).called(1);
+      verify(() => repo.updatePlan(_planDay, sayNoText: const PlanField.set('Toplantılar'))).called(1);
       expect(find.byType(SnackBar), findsNothing);
       expect(tester.widget<TextField>(sayNoField()).controller!.text, 'Toplantılar');
 
       // 3) Unchanged after success: no new request
       await refocusAndBlur(tester);
       verifyNoUpdate();
+    });
+
+    testWidgets('stored null + empty field: blur sends no request', (tester) async {
+      final fake = _FakeDailyPlanRepository(plan); // fixture say_no_text is null
+      await pumpHome(tester, repository: fake);
+
+      await refocusAndBlur(tester);
+      await typeAndBlur(tester, '   '); // whitespace-only == null
+
+      expect(fake.bodies, isEmpty);
+    });
+
+    for (final emptied in ['', '   ']) {
+      testWidgets('saved text emptied to "$emptied" + blur sends explicit null, then nothing',
+          (tester) async {
+        final fake = _FakeDailyPlanRepository(plan.copyWith(sayNoText: 'Toplantılar'));
+        await pumpHome(tester, repository: fake);
+        expect(tester.widget<TextField>(sayNoField()).controller!.text, 'Toplantılar');
+
+        await typeAndBlur(tester, emptied);
+
+        expect(fake.bodies, [
+          {'say_no_text': null},
+        ]);
+        expect(fake.bodies.single['say_no_text'], isNot(''));
+        expect(fake.plan.sayNoText, isNull);
+        expect(tester.widget<TextField>(sayNoField()).controller!.text, '');
+        expect(find.byType(SnackBar), findsNothing);
+
+        // Now stored null == empty field: no further request
+        await refocusAndBlur(tester);
+        expect(fake.bodies, hasLength(1));
+      });
+    }
+  });
+
+  group('Clearing focus on HomeScreen', () {
+    Finder clearIn(Type card) =>
+        find.descendant(of: find.byType(card), matching: find.text('Temizle'));
+
+    testWidgets('main focus "Temizle": card shows empty state, PUT body is explicit null',
+        (tester) async {
+      final fake = _FakeDailyPlanRepository(plan);
+      await pumpHome(tester, repository: fake);
+      expect(inMainCard('Ana odak görevi'), findsOneWidget);
+
+      await tester.tap(clearIn(MainFocusCard));
+      await tester.pumpAndSettle();
+
+      expect(fake.bodies, [
+        {'main_focus_task_id': null},
+      ]);
+      expect(inMainCard('Ana odak seç'), findsOneWidget);
+      expect(inMainCard('Ana odak görevi'), findsNothing);
+      expect(clearIn(MainFocusCard), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
+      expectNoErrorScreenOrEnglish();
+    });
+
+    testWidgets('side focus "Temizle": side card empty, main untouched', (tester) async {
+      final fake = _FakeDailyPlanRepository(plan.copyWith(sideFocus: plan.tasks[3]));
+      await pumpHome(tester, repository: fake);
+      expect(inSideCard('Dördüncü görev - yapılacak'), findsOneWidget);
+
+      await tester.tap(clearIn(SideFocusCard));
+      await tester.pumpAndSettle();
+
+      expect(fake.bodies, [
+        {'side_focus_task_id': null},
+      ]);
+      expect(inSideCard('İkincil odak seç'), findsOneWidget);
+      expect(inMainCard('Ana odak görevi'), findsOneWidget);
+    });
+
+    testWidgets('clear failure: old focus stays, Turkish snackbar, no error screen',
+        (tester) async {
+      final fake = _FakeDailyPlanRepository(plan)..failure = const NetworkFailure('timeout');
+      await pumpHome(tester, repository: fake);
+
+      await tester.tap(clearIn(MainFocusCard));
+      await tester.pumpAndSettle();
+
+      expect(fake.bodies, [
+        {'main_focus_task_id': null},
+      ]);
+      expect(inMainCard('Ana odak görevi'), findsOneWidget);
+      expect(find.widgetWithText(SnackBar, 'Bağlantı hatası'), findsOneWidget);
+      expect(find.byType(DailyPlanLoading), findsNothing);
+      expectNoErrorScreenOrEnglish();
     });
   });
 }

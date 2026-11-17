@@ -6,6 +6,7 @@ import 'package:varys/core/errors/failure.dart';
 import 'package:varys/core/network/api_client.dart';
 import 'package:varys/features/home/data/date_utils.dart';
 import 'package:varys/features/home/domain/daily_plan.dart';
+import 'package:varys/features/home/domain/plan_field.dart';
 import 'package:varys/features/planning/domain/task.dart';
 
 /// Repository for DailyPlan operations
@@ -62,31 +63,36 @@ class DailyPlanRepository {
     }
   }
 
-  /// Updates the daily plan with the given fields.
-  /// Only non-null fields are included in the request.
-  /// To clear a field, explicitly pass null.
+  /// Builds the partial PUT body: unset fields are omitted, set fields carry
+  /// their value, cleared fields are sent as explicit null.
+  static Map<String, dynamic> buildUpdateBody({
+    PlanField<int> mainFocusTaskId = const PlanField.unset(),
+    PlanField<int> sideFocusTaskId = const PlanField.unset(),
+    PlanField<String> sayNoText = const PlanField.unset(),
+  }) {
+    final body = <String, dynamic>{};
+    mainFocusTaskId.writeTo(body, 'main_focus_task_id');
+    sideFocusTaskId.writeTo(body, 'side_focus_task_id');
+    sayNoText.writeTo(body, 'say_no_text');
+    return body;
+  }
+
+  /// Partially updates the daily plan (see [buildUpdateBody]).
   /// Returns the updated plan from the server response.
   Future<Either<Failure, DailyPlan>> updatePlan(
     DateTime day, {
-    int? mainFocusTaskId,
-    int? sideFocusTaskId,
-    String? sayNoText,
+    PlanField<int> mainFocusTaskId = const PlanField.unset(),
+    PlanField<int> sideFocusTaskId = const PlanField.unset(),
+    PlanField<String> sayNoText = const PlanField.unset(),
   }) async {
     try {
       final dateStr = formatDateForApi(day);
 
-      // Build request body with only explicitly provided fields
-      final Map<String, dynamic> requestBody = {};
-
-      if (mainFocusTaskId != null) {
-        requestBody['main_focus_task_id'] = mainFocusTaskId;
-      }
-      if (sideFocusTaskId != null) {
-        requestBody['side_focus_task_id'] = sideFocusTaskId;
-      }
-      if (sayNoText != null) {
-        requestBody['say_no_text'] = sayNoText;
-      }
+      final requestBody = buildUpdateBody(
+        mainFocusTaskId: mainFocusTaskId,
+        sideFocusTaskId: sideFocusTaskId,
+        sayNoText: sayNoText,
+      );
 
       final response = await _apiClient.put<Map<String, dynamic>>(
         '$_basePath/$dateStr',

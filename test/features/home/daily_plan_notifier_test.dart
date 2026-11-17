@@ -9,6 +9,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:varys/core/errors/failure.dart';
 import 'package:varys/features/home/data/daily_plan_repository.dart';
 import 'package:varys/features/home/domain/daily_plan.dart';
+import 'package:varys/features/home/domain/plan_field.dart';
 import 'package:varys/features/home/domain/today_provider.dart';
 import 'package:varys/features/home/presentation/providers/daily_plan_provider.dart';
 import 'package:varys/features/planning/domain/task.dart';
@@ -39,7 +40,11 @@ void main() {
   late _MockDailyPlanRepository repo;
   late DailyPlan plan;
 
-  setUpAll(() => registerFallbackValue(DateTime(2000)));
+  setUpAll(() {
+    registerFallbackValue(DateTime(2000));
+    registerFallbackValue(const PlanField<int>.unset());
+    registerFallbackValue(const PlanField<String>.unset());
+  });
 
   setUp(() {
     repo = _MockDailyPlanRepository();
@@ -85,7 +90,7 @@ void main() {
       final states = <AsyncValue<DailyPlan>>[];
       container.listen(dailyPlanProvider, (_, next) => states.add(next));
 
-      final result = await container.read(dailyPlanProvider.notifier).updatePlan(sideFocusTaskId: 4);
+      final result = await container.read(dailyPlanProvider.notifier).updatePlan(sideFocusTaskId: const PlanField.set(4));
 
       expect(result, const Left<Failure, DailyPlan>(failure));
       expect(states, isEmpty, reason: 'state must not change on failure');
@@ -99,11 +104,74 @@ void main() {
       final updated = plan.copyWith(sideFocus: plan.tasks[3]);
       stubUpdate(Right(updated));
 
-      final result = await container.read(dailyPlanProvider.notifier).updatePlan(sideFocusTaskId: 4);
+      final result = await container.read(dailyPlanProvider.notifier).updatePlan(sideFocusTaskId: const PlanField.set(4));
 
       expect(result, Right<Failure, DailyPlan>(updated));
       expect(container.read(dailyPlanProvider).value!.sideFocus!.id, 4);
-      verify(() => repo.updatePlan(_planDay, sideFocusTaskId: 4)).called(1);
+      verify(() => repo.updatePlan(_planDay, sideFocusTaskId: const PlanField.set(4))).called(1);
+    });
+
+    test('all fields unset: no request, Right with the current plan, state unchanged', () async {
+      final container = await loadedContainer();
+      final states = <AsyncValue<DailyPlan>>[];
+      container.listen(dailyPlanProvider, (_, next) => states.add(next));
+
+      final result = await container.read(dailyPlanProvider.notifier).updatePlan();
+
+      expect(result, Right<Failure, DailyPlan>(plan));
+      expect(states, isEmpty);
+      verifyNoUpdate();
+    });
+  });
+
+  group('DailyPlanNotifier clear', () {
+    test('clearMainFocus sends only main as clear and applies the server plan', () async {
+      final container = await loadedContainer();
+      stubUpdate(Right(plan.copyWith(mainFocus: null)));
+
+      final result = await container.read(dailyPlanProvider.notifier).clearMainFocus();
+
+      expect(result.isRight(), isTrue);
+      verify(() => repo.updatePlan(
+            _planDay,
+            mainFocusTaskId: const PlanField.clear(),
+            sideFocusTaskId: const PlanField.unset(),
+            sayNoText: const PlanField.unset(),
+          )).called(1);
+      verify(() => repo.getPlan(any())).called(1); // initial load only, no extra GET
+      expect(container.read(dailyPlanProvider).value!.mainFocus, isNull);
+    });
+
+    test('clearSideFocus sends only side as clear', () async {
+      plan = plan.copyWith(sideFocus: plan.tasks[3]);
+      final container = await loadedContainer();
+      stubUpdate(Right(plan.copyWith(sideFocus: null)));
+
+      await container.read(dailyPlanProvider.notifier).clearSideFocus();
+
+      verify(() => repo.updatePlan(_planDay, sideFocusTaskId: const PlanField.clear())).called(1);
+      expect(container.read(dailyPlanProvider).value!.sideFocus, isNull);
+    });
+
+    test('clearSayNoText sends only say-no as clear', () async {
+      plan = plan.copyWith(sayNoText: 'Toplantılar');
+      final container = await loadedContainer();
+      stubUpdate(Right(plan.copyWith(sayNoText: null)));
+
+      await container.read(dailyPlanProvider.notifier).clearSayNoText();
+
+      verify(() => repo.updatePlan(_planDay, sayNoText: const PlanField.clear())).called(1);
+      expect(container.read(dailyPlanProvider).value!.sayNoText, isNull);
+    });
+
+    test('clear failure keeps the old focus and returns Left', () async {
+      final container = await loadedContainer();
+      stubUpdate(const Left(NetworkFailure('timeout')));
+
+      final result = await container.read(dailyPlanProvider.notifier).clearMainFocus();
+
+      expect(result.isLeft(), isTrue);
+      expect(container.read(dailyPlanProvider).value!.mainFocus!.id, 3);
     });
   });
 
@@ -162,7 +230,7 @@ void main() {
       final result = await container.read(dailyPlanProvider.notifier).setSideFocus(plan.tasks[3]);
 
       expect(result.isRight(), isTrue);
-      verify(() => repo.updatePlan(_planDay, sideFocusTaskId: 4)).called(1);
+      verify(() => repo.updatePlan(_planDay, sideFocusTaskId: const PlanField.set(4))).called(1);
     });
   });
 }

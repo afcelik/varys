@@ -5,6 +5,7 @@ import 'package:varys/core/errors/failure.dart';
 import 'package:varys/features/home/data/date_utils.dart';
 import 'package:varys/features/home/data/daily_plan_repository.dart';
 import 'package:varys/features/home/domain/daily_plan.dart';
+import 'package:varys/features/home/domain/plan_field.dart';
 import 'package:varys/features/home/domain/today_provider.dart';
 import 'package:varys/features/planning/data/task_repository_impl.dart';
 import 'package:varys/features/planning/domain/task.dart';
@@ -30,16 +31,24 @@ class DailyPlanNotifier extends AutoDisposeAsyncNotifier<DailyPlan> {
   static const String alreadyMainFocusMessage = 'Bu görev zaten ana odak.';
   static const String alreadySideFocusMessage = 'Bu görev zaten ikincil odak.';
 
-  /// Updates the daily plan with the given fields.
-  /// Only non-null parameters are sent to the API.
+  /// Partially updates the daily plan. Each field is explicitly
+  /// unset (not sent), set (sent with value) or clear (sent as null).
+  /// When every field is unset, no request is made and the current plan
+  /// is returned.
   ///
   /// Never puts the provider into AsyncLoading/AsyncError: on failure the
   /// current plan stays on screen and the caller shows a snackbar.
   Future<Either<Failure, DailyPlan>> updatePlan({
-    int? mainFocusTaskId,
-    int? sideFocusTaskId,
-    String? sayNoText,
+    PlanField<int> mainFocusTaskId = const PlanField.unset(),
+    PlanField<int> sideFocusTaskId = const PlanField.unset(),
+    PlanField<String> sayNoText = const PlanField.unset(),
   }) async {
+    if (mainFocusTaskId.isUnset && sideFocusTaskId.isUnset && sayNoText.isUnset) {
+      final plan = state.value;
+      if (plan == null) return const Left(ValidationFailure(planNotLoadedMessage));
+      return Right(plan);
+    }
+
     final today = ref.read(todayProvider);
     final repository = await ref.read(dailyPlanRepositoryProvider.future);
 
@@ -72,7 +81,7 @@ class DailyPlanNotifier extends AutoDisposeAsyncNotifier<DailyPlan> {
     if (plan.sideFocus?.id == task.id) {
       return const Left(ValidationFailure(alreadySideFocusMessage));
     }
-    return updatePlan(mainFocusTaskId: task.id);
+    return updatePlan(mainFocusTaskId: PlanField.set(task.id));
   }
 
   /// Sets the side focus. Rejected client-side (no request) when the plan
@@ -83,23 +92,20 @@ class DailyPlanNotifier extends AutoDisposeAsyncNotifier<DailyPlan> {
     if (plan.mainFocus?.id == task.id) {
       return const Left(ValidationFailure(alreadyMainFocusMessage));
     }
-    return updatePlan(sideFocusTaskId: task.id);
+    return updatePlan(sideFocusTaskId: PlanField.set(task.id));
   }
 
-  // NOTE: clearing is a known issue (see CLAUDE.md "Known issues"):
-  // null fields are dropped from the PUT body, so these send `{}`.
-
-  /// Clears the main focus
+  /// Clears the main focus (sends explicit null)
   Future<Either<Failure, DailyPlan>> clearMainFocus() =>
-      updatePlan(mainFocusTaskId: null);
+      updatePlan(mainFocusTaskId: const PlanField.clear());
 
-  /// Clears the side focus
+  /// Clears the side focus (sends explicit null)
   Future<Either<Failure, DailyPlan>> clearSideFocus() =>
-      updatePlan(sideFocusTaskId: null);
+      updatePlan(sideFocusTaskId: const PlanField.clear());
 
-  /// Clears the say no text
+  /// Clears the say no text (sends explicit null)
   Future<Either<Failure, DailyPlan>> clearSayNoText() =>
-      updatePlan(sayNoText: null);
+      updatePlan(sayNoText: const PlanField.clear());
 
   /// Add a new task for today's plan (optimistic update with temporary negative ID)
   /// Returns Failure on error, null on success - widget shows snackbar

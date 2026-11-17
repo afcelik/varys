@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:varys/core/errors/error_utils.dart';
 import 'package:varys/core/theme/app_theme.dart';
 import 'package:varys/features/home/domain/daily_plan.dart';
+import 'package:varys/features/home/domain/plan_field.dart';
 import 'package:varys/features/home/presentation/providers/daily_plan_provider.dart';
 
 /// "What will I say no to today?" card - amber styled editable text field
@@ -18,14 +19,16 @@ class SayNoCard extends ConsumerStatefulWidget {
 class _SayNoCardState extends ConsumerState<SayNoCard> {
   late TextEditingController _controller;
   late FocusNode _focusNode;
-  String _originalText = ''; // Last successfully saved value
+  /// Last successfully saved value, normalized: null, "" and whitespace-only
+  /// are all treated as the same empty value ("").
+  String _originalText = '';
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.plan.sayNoText ?? '');
-    _originalText = widget.plan.sayNoText ?? '';
+    _originalText = (widget.plan.sayNoText ?? '').trim();
     _focusNode = FocusNode();
     _focusNode.addListener(_onFocusChange);
   }
@@ -51,9 +54,11 @@ class _SayNoCardState extends ConsumerState<SayNoCard> {
     if (_isSaving || currentText == _originalText) return;
 
     _isSaving = true;
-    // Send empty string as null to clear
-    final textToSend = currentText.isEmpty ? null : currentText;
-    final result = await ref.read(dailyPlanProvider.notifier).updatePlan(sayNoText: textToSend);
+    // Empty (or whitespace-only) clears the field with explicit null, never ""
+    final notifier = ref.read(dailyPlanProvider.notifier);
+    final result = currentText.isEmpty
+        ? await notifier.clearSayNoText()
+        : await notifier.updatePlan(sayNoText: PlanField.set(currentText));
     _isSaving = false;
     if (!mounted) return;
 
@@ -61,7 +66,11 @@ class _SayNoCardState extends ConsumerState<SayNoCard> {
       (failure) => ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(userMessage(failure)), behavior: SnackBarBehavior.floating),
       ),
-      (_) => _originalText = currentText,
+      (_) {
+        _originalText = currentText;
+        // Cleared: drop leftover whitespace so the hint shows
+        if (currentText.isEmpty) _controller.clear();
+      },
     );
   }
 
