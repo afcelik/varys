@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dartz/dartz.dart' hide Task;
 import 'package:varys/core/errors/error_utils.dart';
+import 'package:varys/core/errors/failure.dart';
 import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/features/planning/presentation/task_notifier.dart';
 
@@ -18,14 +20,13 @@ class _TaskListPageState extends ConsumerState<TaskListPage> {
     final state = ref.watch(taskListNotifierProvider);
 
     return state.when(
-      loading: () => const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      ),
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (error, stack) => Scaffold(
         appBar: AppBar(title: const Text('Planlama')),
         body: _ErrorView(
           message: userMessage(error),
-          onRetry: () => ref.read(taskListNotifierProvider.notifier).refreshTasks(),
+          onRetry: () => ref.invalidate(taskListNotifierProvider),
         ),
       ),
       data: (taskState) => Scaffold(
@@ -34,7 +35,11 @@ class _TaskListPageState extends ConsumerState<TaskListPage> {
           actions: [
             IconButton(
               icon: const Icon(Icons.refresh),
-              onPressed: () => ref.read(taskListNotifierProvider.notifier).refreshTasks(),
+              onPressed: () async => _reportFailure(
+                await ref
+                    .read(taskListNotifierProvider.notifier)
+                    .refreshTasks(),
+              ),
               tooltip: 'Yenile',
             ),
           ],
@@ -42,16 +47,26 @@ class _TaskListPageState extends ConsumerState<TaskListPage> {
             preferredSize: const Size.fromHeight(48),
             child: _FilterTabs(
               currentFilter: taskState.currentFilter,
-              onFilterChanged: (filter) {
-                ref.read(taskListNotifierProvider.notifier).changeFilter(filter);
+              onFilterChanged: (filter) async {
+                _reportFailure(
+                  await ref
+                      .read(taskListNotifierProvider.notifier)
+                      .changeFilter(filter),
+                );
               },
             ),
           ),
         ),
         body: _TaskListView(
           tasks: taskState.tasks.value ?? [],
-          onToggle: (id) => ref.read(taskListNotifierProvider.notifier).toggleTaskCompletion(id),
-          onDelete: (id) => ref.read(taskListNotifierProvider.notifier).deleteTask(id),
+          onToggle: (id) async => _reportFailure(
+            await ref
+                .read(taskListNotifierProvider.notifier)
+                .toggleTaskCompletion(id),
+          ),
+          onDelete: (id) async => _reportFailure(
+            await ref.read(taskListNotifierProvider.notifier).deleteTask(id),
+          ),
         ),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: () => _showAddTaskDialog(context, ref),
@@ -62,64 +77,89 @@ class _TaskListPageState extends ConsumerState<TaskListPage> {
     );
   }
 
+  /// Shows a Turkish snackbar for a failed mutation; success needs no UI.
+  void _reportFailure(Either<Failure, void> result) {
+    result.fold((failure) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(userMessage(failure)),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }, (_) {});
+  }
+
   void _showAddTaskDialog(BuildContext context, WidgetRef ref) {
     final titleController = TextEditingController();
     final descriptionController = TextEditingController();
+    var isSubmitting = false;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Yeni Görev Ekle'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleController,
-              decoration: const InputDecoration(
-                labelText: 'Başlık *',
-                hintText: 'Görev başlığını girin',
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Yeni Görev Ekle'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: titleController,
+                decoration: const InputDecoration(
+                  labelText: 'Başlık *',
+                  hintText: 'Görev başlığını girin',
+                ),
+                autofocus: true,
+                textCapitalization: TextCapitalization.sentences,
               ),
-              autofocus: true,
-              textCapitalization: TextCapitalization.sentences,
+              const SizedBox(height: 16),
+              TextField(
+                controller: descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Açıklama',
+                  hintText: 'Görev açıklamasını girin (isteğe bağlı)',
+                ),
+                maxLines: 3,
+                textCapitalization: TextCapitalization.sentences,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('İptal'),
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: descriptionController,
-              decoration: const InputDecoration(
-                labelText: 'Açıklama',
-                hintText: 'Görev açıklamasını girin (isteğe bağlı)',
-              ),
-              maxLines: 3,
-              textCapitalization: TextCapitalization.sentences,
+            FilledButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      final title = titleController.text.trim();
+                      if (title.isEmpty) return;
+
+                      final task = Task(
+                        id: 0,
+                        title: title,
+                        description: descriptionController.text.trim(),
+                        status: TaskStatus.todo,
+                        createdAt: DateTime.now(),
+                        updatedAt: DateTime.now(),
+                        deletedAt: null,
+                      );
+
+                      setDialogState(() => isSubmitting = true);
+                      final result = await ref
+                          .read(taskListNotifierProvider.notifier)
+                          .addTask(task);
+                      if (!dialogContext.mounted) return;
+                      setDialogState(() => isSubmitting = false);
+                      // Success closes the dialog; failure keeps it open with the typed text
+                      if (result.isRight()) Navigator.pop(dialogContext);
+                      _reportFailure(result);
+                    },
+              child: const Text('Ekle'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('İptal'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final title = titleController.text.trim();
-              if (title.isEmpty) return;
-
-              final task = Task(
-                id: 0,
-                title: title,
-                description: descriptionController.text.trim(),
-                status: TaskStatus.todo,
-                createdAt: DateTime.now(),
-                updatedAt: DateTime.now(),
-                deletedAt: null,
-              );
-
-              ref.read(taskListNotifierProvider.notifier).addTask(task);
-              Navigator.pop(context);
-            },
-            child: const Text('Ekle'),
-          ),
-        ],
       ),
     );
   }
@@ -176,7 +216,8 @@ class _TaskListView extends StatelessWidget {
       return _EmptyState(
         icon: Icons.task_alt,
         title: 'Görev bulunamadı',
-        subtitle: 'Henüz görev eklenmemiş. Yeni bir görev oluşturmak için + butonuna basın.',
+        subtitle:
+            'Henüz görev eklenmemiş. Yeni bir görev oluşturmak için + butonuna basın.',
       );
     }
 
@@ -226,25 +267,28 @@ class _TaskTile extends StatelessWidget {
       ),
       confirmDismiss: (direction) async {
         return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Görevi Sil'),
-            content: Text('"${task.title}" görevini silmek istediğinizden emin misiniz?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('İptal'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: FilledButton.styleFrom(
-                  backgroundColor: theme.colorScheme.error,
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Görevi Sil'),
+                content: Text(
+                  '"${task.title}" görevini silmek istediğinizden emin misiniz?',
                 ),
-                child: const Text('Sil'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('İptal'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: theme.colorScheme.error,
+                    ),
+                    child: const Text('Sil'),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ) ?? false;
+            ) ??
+            false;
       },
       onDismissed: (_) => onDelete(),
       child: Card(
@@ -294,10 +338,7 @@ class _ErrorView extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
 
-  const _ErrorView({
-    required this.message,
-    required this.onRetry,
-  });
+  const _ErrorView({required this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -309,11 +350,7 @@ class _ErrorView extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 64,
-              color: theme.colorScheme.error,
-            ),
+            Icon(Icons.error_outline, size: 64, color: theme.colorScheme.error),
             const SizedBox(height: 16),
             Text(
               'Bir hata oluştu',

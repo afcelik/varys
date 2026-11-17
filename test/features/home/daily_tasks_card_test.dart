@@ -239,72 +239,7 @@ void main() {
       expect((tester.widget<TextField>(textField).controller?.text ?? ''), equals('New Task'));
     });
 
-    testWidgets('whitespace-only input not submitted', (tester) async {
-      final plan = DailyPlan(
-        planDate: planDate,
-        mainFocus: null,
-        sideFocus: null,
-        sayNoText: null,
-        tasks: [],
-      );
-
-      await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: Scaffold(
-              body: DailyTasksCard(plan: plan),
-            ),
-          ),
-        ),
-      );
-
-      final textField = find.byType(TextField);
-
-      // Enter only whitespace
-      await tester.enterText(textField, '   ');
-
-      // Submit - should not trigger submission (field validation in _handleSubmit)
-      await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pump();
-
-      // Field should still have the whitespace (since trim makes it empty and submission is blocked)
-      // Actually the field clears on submit attempt but then restore happens on failure
-      // This test would need proper mocking to verify
-      expect(true, isTrue);
-    });
-
-    testWidgets('error shows Turkish message, no "Instance of" or "Exception"', (tester) async {
-      // This test would need mocked notifier to return failure
-      expect(true, isTrue);
-    });
-
-    testWidgets('double-tap prevention: checkbox disabled during operation', (tester) async {
-      final plan = DailyPlan(
-        planDate: planDate,
-        mainFocus: null,
-        sideFocus: null,
-        sayNoText: null,
-        tasks: [
-          createTask(1, 'Test Task', TaskStatus.todo),
-        ],
-      );
-
-      await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: Scaffold(
-              body: DailyTasksCard(plan: plan),
-            ),
-          ),
-        ),
-      );
-
-      // Check that _TaskRow has _isLoading state
-      // This is an internal state test - would need more complex setup
-      expect(true, isTrue);
-    });
-
-    testWidgets('ValueKey(task.id): when task completed and order changes, only relevant row checkbox disabled', (tester) async {
+    testWidgets('renders one row per task', (tester) async {
       final plan = DailyPlan(
         planDate: planDate,
         mainFocus: null,
@@ -326,15 +261,8 @@ void main() {
         ),
       );
 
-      // Verify ValueKey is used on ListTile items (by checking they have unique keys)
-      // The _TaskRow uses ValueKey(task.id) which ensures proper reconciliation
+      // Per-row disabling during a toggle is covered in home_daily_tasks_integration_test.dart
       expect(find.byType(ListTile), findsNWidgets(2));
-      expect(true, isTrue);
-    });
-
-    testWidgets('failed submission with empty field: typed text restored', (tester) async {
-      // This test would need mocked notifier to return failure
-      expect(true, isTrue);
     });
   });
 }

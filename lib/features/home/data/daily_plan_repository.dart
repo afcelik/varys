@@ -121,7 +121,7 @@ class DailyPlanRepository {
 
       return Right(plan);
     } on DioException catch (e) {
-      return Left(_handleDioError(e));
+      return Left(_handleDioError(e, isPlanUpdate: true));
     } catch (e, stackTrace) {
       if (kDebugMode) {
         debugPrint('DailyPlanRepository.updatePlan error: $e');
@@ -131,7 +131,11 @@ class DailyPlanRepository {
     }
   }
 
-  Failure _handleDioError(DioException e) {
+  /// Fixed message for a rejected (422) daily plan update.
+  static const String planUpdateInvalidMessage =
+      'Plan güncellenemedi. Lütfen seçimi kontrol edin.';
+
+  Failure _handleDioError(DioException e, {bool isPlanUpdate = false}) {
     final statusCode = e.response?.statusCode;
 
     switch (e.type) {
@@ -140,20 +144,12 @@ class DailyPlanRepository {
       case DioExceptionType.receiveTimeout:
         return const NetworkFailure('İstek zaman aşımına uğradı');
       case DioExceptionType.badResponse:
-        // For 422 on DailyPlan PUT, the backend may return specific messages
-        // about task already being main/side focus. We preserve those.
-        if (statusCode == 422) {
-          final detail = e.response?.data?['detail'];
-          if (detail is String && detail.isNotEmpty) {
-            // Check if it's a specific task assignment conflict message
-            if (detail.contains('main focus') || detail.contains('ana odak') ||
-                detail.contains('side focus') || detail.contains('yan odak') ||
-                detail.contains('already assigned') || detail.contains('zaten atanmış')) {
-              return ServerFailure(detail, statusCode: 422);
-            }
-          }
+        // Fixed Turkish messages only, never expose backend detail.
+        // Focus conflicts are caught client-side (DailyPlanNotifier preflight);
+        // a 422 on PUT is only a safety net with a general message.
+        if (statusCode == 422 && isPlanUpdate) {
+          return const ServerFailure(planUpdateInvalidMessage, statusCode: 422);
         }
-        // Use fixed Turkish messages for all other cases
         switch (statusCode) {
           case 401:
             return const ServerFailure('Oturum süresi doldu. Lütfen tekrar giriş yapın.', statusCode: 401);

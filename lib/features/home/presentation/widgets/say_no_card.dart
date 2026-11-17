@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:varys/core/errors/error_utils.dart';
 import 'package:varys/core/theme/app_theme.dart';
 import 'package:varys/features/home/domain/daily_plan.dart';
 import 'package:varys/features/home/presentation/providers/daily_plan_provider.dart';
@@ -17,7 +18,8 @@ class SayNoCard extends ConsumerStatefulWidget {
 class _SayNoCardState extends ConsumerState<SayNoCard> {
   late TextEditingController _controller;
   late FocusNode _focusNode;
-  String _originalText = '';
+  String _originalText = ''; // Last successfully saved value
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -42,14 +44,25 @@ class _SayNoCardState extends ConsumerState<SayNoCard> {
     }
   }
 
-  void _saveIfChanged() {
+  /// Saves when the text differs from the last SUCCESSFULLY saved value.
+  /// On failure the typed text stays in the field and the next focus loss retries.
+  Future<void> _saveIfChanged() async {
     final currentText = _controller.text.trim();
-    if (currentText != _originalText) {
-      _originalText = currentText;
-      // Send empty string as null to clear
-      final textToSend = currentText.isEmpty ? null : currentText;
-      ref.read(dailyPlanProvider.notifier).updatePlan(sayNoText: textToSend);
-    }
+    if (_isSaving || currentText == _originalText) return;
+
+    _isSaving = true;
+    // Send empty string as null to clear
+    final textToSend = currentText.isEmpty ? null : currentText;
+    final result = await ref.read(dailyPlanProvider.notifier).updatePlan(sayNoText: textToSend);
+    _isSaving = false;
+    if (!mounted) return;
+
+    result.fold(
+      (failure) => ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(userMessage(failure)), behavior: SnackBarBehavior.floating),
+      ),
+      (_) => _originalText = currentText,
+    );
   }
 
   @override

@@ -14,6 +14,16 @@ class ServerFailure extends Failure {
   String get userMessage => message;
 }
 
+/// Client-side validation failure (no request was sent).
+/// [message] must be a fixed Turkish text, never backend output.
+class ValidationFailure extends Failure {
+  const ValidationFailure(this.message);
+  final String message;
+
+  @override
+  String get userMessage => message;
+}
+
 class NetworkFailure extends Failure {
   const NetworkFailure(this.message);
   final String message;

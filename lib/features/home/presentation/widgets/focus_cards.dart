@@ -1,6 +1,9 @@
+import 'package:dartz/dartz.dart' hide Task;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:varys/core/errors/error_utils.dart';
+import 'package:varys/core/errors/failure.dart';
 import 'package:varys/core/router/app_router.dart';
 import 'package:varys/features/home/domain/daily_plan.dart';
 import 'package:varys/features/home/presentation/providers/daily_plan_provider.dart';
@@ -50,7 +53,7 @@ class MainFocusCard extends ConsumerWidget {
                 const Spacer(),
                 if (mainFocus != null)
                   TextButton.icon(
-                    onPressed: () => _clearFocus(ref),
+                    onPressed: () => _clearFocus(context, ref),
                     icon: const Icon(Icons.clear, size: 18),
                     label: const Text('Temizle'),
                     style: TextButton.styleFrom(
@@ -74,20 +77,27 @@ class MainFocusCard extends ConsumerWidget {
     );
   }
 
-  void _selectFocus(BuildContext context, WidgetRef ref) {
-    context.push(AppRouter.focusTaskSelectionPath).then((result) {
-      if (result != null && result is Task) {
-        ref.read(dailyPlanProvider.notifier).updatePlan(
-              mainFocusTaskId: result.id,
-            );
-      }
-      // If null (user backed out), do nothing - no change
-    });
+  Future<void> _selectFocus(BuildContext context, WidgetRef ref) async {
+    final selected = await context.push<Task>(AppRouter.focusTaskSelectionPath);
+    if (selected == null) return; // User backed out - no change
+    final result = await ref.read(dailyPlanProvider.notifier).setMainFocus(selected);
+    if (context.mounted) _showFailure(context, result);
   }
 
-  void _clearFocus(WidgetRef ref) {
-    ref.read(dailyPlanProvider.notifier).clearMainFocus();
+  Future<void> _clearFocus(BuildContext context, WidgetRef ref) async {
+    final result = await ref.read(dailyPlanProvider.notifier).clearMainFocus();
+    if (context.mounted) _showFailure(context, result);
   }
+}
+
+/// Shows a Turkish snackbar (via userMessage) when [result] is a failure.
+void _showFailure(BuildContext context, Either<Failure, DailyPlan> result) {
+  result.fold(
+    (failure) => ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(userMessage(failure)), behavior: SnackBarBehavior.floating),
+    ),
+    (_) {},
+  );
 }
 
 /// Side focus card - smaller version
@@ -134,7 +144,7 @@ class SideFocusCard extends ConsumerWidget {
                 const Spacer(),
                 if (sideFocus != null)
                   TextButton.icon(
-                    onPressed: () => _clearFocus(ref),
+                    onPressed: () => _clearFocus(context, ref),
                     icon: const Icon(Icons.clear, size: 16),
                     label: const Text('Temizle'),
                     style: TextButton.styleFrom(
@@ -160,18 +170,16 @@ class SideFocusCard extends ConsumerWidget {
     );
   }
 
-  void _selectFocus(BuildContext context, WidgetRef ref) {
-    context.push(AppRouter.focusTaskSelectionPath).then((result) {
-      if (result != null && result is Task) {
-        ref.read(dailyPlanProvider.notifier).updatePlan(
-              sideFocusTaskId: result.id,
-            );
-      }
-    });
+  Future<void> _selectFocus(BuildContext context, WidgetRef ref) async {
+    final selected = await context.push<Task>(AppRouter.focusTaskSelectionPath);
+    if (selected == null) return; // User backed out - no change
+    final result = await ref.read(dailyPlanProvider.notifier).setSideFocus(selected);
+    if (context.mounted) _showFailure(context, result);
   }
 
-  void _clearFocus(WidgetRef ref) {
-    ref.read(dailyPlanProvider.notifier).clearSideFocus();
+  Future<void> _clearFocus(BuildContext context, WidgetRef ref) async {
+    final result = await ref.read(dailyPlanProvider.notifier).clearSideFocus();
+    if (context.mounted) _showFailure(context, result);
   }
 }
 

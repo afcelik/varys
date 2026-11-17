@@ -26,19 +26,22 @@ class DailyPlanNotifier extends AutoDisposeAsyncNotifier<DailyPlan> {
     );
   }
 
+  static const String planNotLoadedMessage = 'Plan henüz yüklenmedi.';
+  static const String alreadyMainFocusMessage = 'Bu görev zaten ana odak.';
+  static const String alreadySideFocusMessage = 'Bu görev zaten ikincil odak.';
+
   /// Updates the daily plan with the given fields.
   /// Only non-null parameters are sent to the API.
-  /// To clear a field, explicitly pass null.
-  Future<void> updatePlan({
+  ///
+  /// Never puts the provider into AsyncLoading/AsyncError: on failure the
+  /// current plan stays on screen and the caller shows a snackbar.
+  Future<Either<Failure, DailyPlan>> updatePlan({
     int? mainFocusTaskId,
     int? sideFocusTaskId,
     String? sayNoText,
   }) async {
     final today = ref.read(todayProvider);
     final repository = await ref.read(dailyPlanRepositoryProvider.future);
-
-    // Set loading state
-    state = const AsyncLoading();
 
     final result = await repository.updatePlan(
       today,
@@ -47,35 +50,56 @@ class DailyPlanNotifier extends AutoDisposeAsyncNotifier<DailyPlan> {
       sayNoText: sayNoText,
     );
 
-    result.fold(
+    return result.fold(
       (failure) {
-        // On error, restore previous state and show error
         if (kDebugMode) {
           debugPrint('DailyPlanNotifier.updatePlan error: ${failure.runtimeType} - $failure');
         }
-        state = AsyncError(failure, StackTrace.current);
+        return Left(failure);
       },
       (plan) {
-        // Update state with the returned plan from server
         state = AsyncData(plan);
+        return Right(plan);
       },
     );
   }
 
-  /// Clears the main focus
-  Future<void> clearMainFocus() async {
-    await updatePlan(mainFocusTaskId: null);
+  /// Sets the main focus. Rejected client-side (no request) when the plan
+  /// is not loaded or the task is already the side focus.
+  Future<Either<Failure, DailyPlan>> setMainFocus(Task task) async {
+    final plan = state.value;
+    if (plan == null) return const Left(ValidationFailure(planNotLoadedMessage));
+    if (plan.sideFocus?.id == task.id) {
+      return const Left(ValidationFailure(alreadySideFocusMessage));
+    }
+    return updatePlan(mainFocusTaskId: task.id);
   }
+
+  /// Sets the side focus. Rejected client-side (no request) when the plan
+  /// is not loaded or the task is already the main focus.
+  Future<Either<Failure, DailyPlan>> setSideFocus(Task task) async {
+    final plan = state.value;
+    if (plan == null) return const Left(ValidationFailure(planNotLoadedMessage));
+    if (plan.mainFocus?.id == task.id) {
+      return const Left(ValidationFailure(alreadyMainFocusMessage));
+    }
+    return updatePlan(sideFocusTaskId: task.id);
+  }
+
+  // NOTE: clearing is a known issue (see CLAUDE.md "Known issues"):
+  // null fields are dropped from the PUT body, so these send `{}`.
+
+  /// Clears the main focus
+  Future<Either<Failure, DailyPlan>> clearMainFocus() =>
+      updatePlan(mainFocusTaskId: null);
 
   /// Clears the side focus
-  Future<void> clearSideFocus() async {
-    await updatePlan(sideFocusTaskId: null);
-  }
+  Future<Either<Failure, DailyPlan>> clearSideFocus() =>
+      updatePlan(sideFocusTaskId: null);
 
   /// Clears the say no text
-  Future<void> clearSayNoText() async {
-    await updatePlan(sayNoText: null);
-  }
+  Future<Either<Failure, DailyPlan>> clearSayNoText() =>
+      updatePlan(sayNoText: null);
 
   /// Add a new task for today's plan (optimistic update with temporary negative ID)
   /// Returns Failure on error, null on success - widget shows snackbar

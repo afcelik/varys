@@ -8,6 +8,7 @@ import 'package:varys/features/planning/domain/task_repository.dart' show TaskRe
 import 'package:varys/features/planning/domain/task.dart' show Task, TaskStatus, TaskFilter;
 import 'package:varys/core/errors/failure.dart';
 import 'dart:async';
+import 'package:mocktail/mocktail.dart';
 
 void main() {
   group('TaskListPage Widget Tests', () {
@@ -93,7 +94,139 @@ void main() {
       expect(find.widgetWithText(FilledButton, 'Tekrar Dene'), findsOneWidget);
     });
   });
+
+  group('TaskListPage mutation failures (real TaskListNotifier + mocked repository)', () {
+    late _MocktailTaskRepository repo;
+
+    Task task(int id, String title, {TaskStatus status = TaskStatus.todo}) => Task(
+          id: id,
+          title: title,
+          status: status,
+          createdAt: DateTime(2026, 11, 1, 10),
+          updatedAt: DateTime(2026, 11, 1, 10),
+        );
+
+    setUpAll(() {
+      registerFallbackValue(task(0, 'fallback'));
+      registerFallbackValue(TaskFilter.all);
+    });
+
+    setUp(() {
+      repo = _MocktailTaskRepository();
+      when(() => repo.getTasksByFilter(any()))
+          .thenAnswer((_) async => Right([task(1, 'Görev A'), task(2, 'Görev B')]));
+    });
+
+    Future<void> pumpPage(WidgetTester tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [taskRepositoryProvider.overrideWith((ref) async => repo)],
+          child: const MaterialApp(home: TaskListPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    bool checkboxValue(WidgetTester tester, String title) => tester
+        .widget<Checkbox>(find.descendant(
+          of: find.ancestor(of: find.text(title), matching: find.byType(ListTile)),
+          matching: find.byType(Checkbox),
+        ))
+        .value!;
+
+    testWidgets('add Left(NetworkFailure): no full-page error, list stays, dialog keeps text, snackbar',
+        (tester) async {
+      when(() => repo.createTask(any()))
+          .thenAnswer((_) async => const Left(NetworkFailure('Sunucuya bağlanılamıyor')));
+      await pumpPage(tester);
+
+      await tester.tap(find.text('Yeni Görev'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, 'Yeni iş');
+      await tester.tap(find.text('Ekle'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Bir hata oluştu'), findsNothing);
+      expect(find.text('Görev A'), findsOneWidget);
+      expect(find.text('Görev B'), findsOneWidget);
+      expect(find.text('Yeni Görev Ekle'), findsOneWidget, reason: 'dialog stays open');
+      final titleField = tester.widget<TextField>(find.byType(TextField).first);
+      expect(titleField.controller!.text, 'Yeni iş');
+      expect(find.widgetWithText(SnackBar, 'Bağlantı hatası'), findsOneWidget);
+    });
+
+    testWidgets('add Right: dialog closes and the refreshed list shows the new task', (tester) async {
+      await pumpPage(tester);
+      when(() => repo.createTask(any())).thenAnswer((_) async => Right(task(3, 'Yeni iş')));
+      when(() => repo.getTasksByFilter(any())).thenAnswer(
+          (_) async => Right([task(1, 'Görev A'), task(2, 'Görev B'), task(3, 'Yeni iş')]));
+
+      await tester.tap(find.text('Yeni Görev'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, 'Yeni iş');
+      await tester.tap(find.text('Ekle'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Yeni Görev Ekle'), findsNothing);
+      expect(find.text('Yeni iş'), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
+    testWidgets('toggle: optimistic tick, Left rolls back only that task and shows snackbar',
+        (tester) async {
+      final pending = Completer<Either<Failure, Task>>();
+      when(() => repo.updateTaskStatus(1, TaskStatus.done)).thenAnswer((_) => pending.future);
+      await pumpPage(tester);
+
+      await tester.tap(find.descendant(
+        of: find.ancestor(of: find.text('Görev A'), matching: find.byType(ListTile)),
+        matching: find.byType(Checkbox),
+      ));
+      await tester.pump();
+      expect(checkboxValue(tester, 'Görev A'), isTrue, reason: 'optimistic update');
+
+      pending.complete(const Left(NetworkFailure('Sunucuya bağlanılamıyor')));
+      await tester.pumpAndSettle();
+
+      expect(checkboxValue(tester, 'Görev A'), isFalse);
+      expect(checkboxValue(tester, 'Görev B'), isFalse);
+      expect(find.text('Bir hata oluştu'), findsNothing);
+      expect(find.widgetWithText(SnackBar, 'Bağlantı hatası'), findsOneWidget);
+    });
+
+    testWidgets('delete Left: task re-appears in place and snackbar is shown', (tester) async {
+      when(() => repo.deleteTask(1))
+          .thenAnswer((_) async => const Left(ServerFailure('Sunucu hatası. Lütfen daha sonra tekrar deneyin.', statusCode: 500)));
+      await pumpPage(tester);
+
+      await tester.tap(find.descendant(
+        of: find.ancestor(of: find.text('Görev A'), matching: find.byType(ListTile)),
+        matching: find.byTooltip('Sil'),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Görev A'), findsOneWidget);
+      expect(tester.getTopLeft(find.text('Görev A')).dy, lessThan(tester.getTopLeft(find.text('Görev B')).dy));
+      expect(find.widgetWithText(SnackBar, 'Sunucu hatası. Lütfen daha sonra tekrar deneyin.'), findsOneWidget);
+    });
+
+    testWidgets('initial load error: "Tekrar Dene" reloads without crashing', (tester) async {
+      when(() => repo.getTasksByFilter(any()))
+          .thenAnswer((_) async => const Left(NetworkFailure('Sunucuya bağlanılamıyor')));
+      await pumpPage(tester);
+      expect(find.text('Bir hata oluştu'), findsOneWidget);
+
+      when(() => repo.getTasksByFilter(any())).thenAnswer((_) async => Right([task(1, 'Görev A')]));
+      await tester.tap(find.text('Tekrar Dene'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Bir hata oluştu'), findsNothing);
+      expect(find.text('Görev A'), findsOneWidget);
+    });
+  });
 }
+
+class _MocktailTaskRepository extends Mock implements TaskRepository {}
 
 class _MockTaskRepository implements TaskRepository {
   final Either<Failure, List<Task>> getTasksByFilterResult;
