@@ -19,6 +19,7 @@ import 'package:varys/features/home/data/daily_plan_repository.dart';
 import 'package:varys/features/home/domain/daily_plan.dart';
 import 'package:varys/features/home/domain/today_provider.dart';
 import 'package:varys/features/home/presentation/home_screen.dart';
+import 'package:varys/features/home/presentation/widgets/daily_tasks_card.dart';
 import 'package:varys/features/home/presentation/widgets/focus_cards.dart';
 import 'package:varys/features/home/presentation/widgets/routines_card.dart';
 import 'package:varys/features/planning/data/task_repository_impl.dart';
@@ -150,6 +151,14 @@ void main() {
         findsOneWidget);
     expect(find.descendant(of: find.byType(RoutinesCard), matching: find.text(_routineTitle)),
         findsOneWidget);
+    // "Planlamadan ekle" button in the daily tasks header, full 48x48 tap target.
+    final addButton =
+        find.descendant(of: find.byType(DailyTasksCard), matching: find.byTooltip('Planlamadan ekle'));
+    expect(addButton, findsOneWidget);
+    // Measure the whole button (incl. tap padding), found via its tooltip.
+    final size = tester.getSize(find.ancestor(of: addButton, matching: find.byType(IconButton)));
+    expect(size.width, greaterThanOrEqualTo(48));
+    expect(size.height, greaterThanOrEqualTo(48));
   }
 
   group('Home has no overflow with the real side rail / bottom bar layout', () {

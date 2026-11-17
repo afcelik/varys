@@ -9,7 +9,23 @@ import 'package:varys/features/home/domain/plan_field.dart';
 import 'package:varys/features/home/domain/today_provider.dart';
 import 'package:varys/features/planning/data/task_repository_impl.dart';
 import 'package:varys/features/planning/domain/task.dart';
+import 'package:varys/features/planning/domain/task_repository.dart';
 import 'package:varys/features/planning/presentation/task_notifier.dart';
+
+/// Outcome of [DailyPlanNotifier.addTasksToDay]: which task ids were
+/// planned for the day and which failed. [firstFailure] is the failure of the
+/// first failed id (for the user-facing message), null when nothing failed.
+class AddTasksResult {
+  const AddTasksResult({
+    required this.succeeded,
+    required this.failed,
+    this.firstFailure,
+  });
+
+  final List<int> succeeded;
+  final List<int> failed;
+  final Failure? firstFailure;
+}
 
 /// Notifier for daily plan state
 class DailyPlanNotifier extends AutoDisposeAsyncNotifier<DailyPlan> {
@@ -190,6 +206,75 @@ class DailyPlanNotifier extends AutoDisposeAsyncNotifier<DailyPlan> {
       ));
       return Left(const UnknownFailure('Beklenmeyen bir hata oluştu'));
     }
+  }
+
+  /// Plans existing tasks (e.g. from the Planning list) for the plan's day.
+  ///
+  /// The day comes from the loaded plan, never from todayProvider/now.
+  /// Requests run one at a time. No optimistic update: after each success
+  /// the server's Task is added to the LATEST plan state, and only if that
+  /// state is still the same day (otherwise the result is silently left).
+  /// The Planning list is invalidated once, after all requests, and only if
+  /// at least one task was planned.
+  ///
+  /// Left only when nothing could be attempted; per-task failures are
+  /// reported in [AddTasksResult.failed].
+  Future<Either<Failure, AddTasksResult>> addTasksToDay(List<int> taskIds) async {
+    final planDate = state.value?.planDate;
+    if (planDate == null) return const Left(ValidationFailure(planNotLoadedMessage));
+
+    final TaskRepository repository;
+    try {
+      repository = await ref.read(taskRepositoryProvider.future);
+    } catch (e, stackTrace) {
+      if (kDebugMode) debugPrint('addTasksToDay repository error: $e\n$stackTrace');
+      return const Left(UnknownFailure('Beklenmeyen bir hata oluştu'));
+    }
+
+    final succeeded = <int>[];
+    final failed = <int>[];
+    Failure? firstFailure;
+
+    for (final id in taskIds.toSet()) {
+      Either<Failure, Task> result;
+      try {
+        result = await repository.planForDay(id, planDate);
+      } catch (e, stackTrace) {
+        if (kDebugMode) debugPrint('addTasksToDay unexpected error: $e\n$stackTrace');
+        result = const Left(UnknownFailure('Beklenmeyen bir hata oluştu'));
+      }
+
+      result.fold(
+        (failure) {
+          failed.add(id);
+          firstFailure ??= failure;
+        },
+        (serverTask) {
+          succeeded.add(id);
+          // Reread state after await
+          final latest = state.value;
+          if (latest == null || latest.planDate != planDate) {
+            // Plan reloaded or day changed - silently leave result
+            return;
+          }
+          final exists = latest.tasks.any((t) => t.id == serverTask.id);
+          state = AsyncData(latest.copyWith(
+            tasks: exists
+                ? latest.tasks.map((t) => t.id == serverTask.id ? serverTask : t).toList()
+                : [...latest.tasks, serverTask],
+          ));
+        },
+      );
+    }
+
+    // Once for the whole batch (not per task) - Planning list reloads once.
+    if (succeeded.isNotEmpty) ref.invalidate(taskListNotifierProvider);
+
+    return Right(AddTasksResult(
+      succeeded: succeeded,
+      failed: failed,
+      firstFailure: firstFailure,
+    ));
   }
 
   /// Toggle task status (optimistic update)

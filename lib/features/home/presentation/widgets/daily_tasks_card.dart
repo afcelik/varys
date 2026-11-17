@@ -5,6 +5,7 @@ import 'package:varys/core/errors/error_utils.dart';
 import 'package:varys/core/errors/failure.dart';
 import 'package:varys/features/home/domain/daily_plan.dart';
 import 'package:varys/features/home/presentation/providers/daily_plan_provider.dart';
+import 'package:varys/features/home/presentation/widgets/add_from_planning_sheet.dart';
 import 'package:varys/features/planning/domain/task.dart';
 
 /// Daily tasks card showing tasks for the current day with progress counter
@@ -60,6 +61,16 @@ class DailyTasksCard extends ConsumerWidget {
                       color: theme.colorScheme.primary,
                     ),
                   ),
+                ),
+                // Tooltip doubles as the semantics label. Tap target is pinned to
+                // at least 48x48 on every platform (desktop themes default to
+                // shrinkWrap + compact density, which would give 40x40 or less).
+                IconButton(
+                  onPressed: () => showAddFromPlanningSheet(context),
+                  tooltip: AddFromPlanningSheet.title,
+                  icon: const Icon(Icons.playlist_add),
+                  visualDensity: VisualDensity.standard,
+                  style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.padded),
                 ),
                 Text(
                   '$completedCount/$totalCount',

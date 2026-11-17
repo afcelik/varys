@@ -24,4 +24,8 @@ abstract class TaskRepository {
 
   /// Updates task status
   Future<Either<Failure, Task>> updateTaskStatus(int id, TaskStatus status);
+
+  /// Plans a task for [day]. Sends ONLY `planned_date` (as
+  /// `YYYY-MM-DDT00:00:00`, no timezone); no other field is touched.
+  Future<Either<Failure, Task>> planForDay(int id, DateTime day);
 }

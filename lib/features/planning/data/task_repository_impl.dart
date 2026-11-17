@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:varys/core/errors/failure.dart';
 import 'package:varys/core/network/api_client.dart';
+import 'package:varys/features/home/data/date_utils.dart';
 import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/features/planning/domain/task_repository.dart';
 
@@ -174,6 +175,25 @@ class TaskRepositoryImpl implements TaskRepository {
     } catch (e, stackTrace) {
       if (kDebugMode) {
         debugPrint('TaskRepositoryImpl.updateTaskStatus error: $e');
+        debugPrint('Stack trace: $stackTrace');
+      }
+      return Left(UnknownFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, Task>> planForDay(int id, DateTime day) async {
+    try {
+      final response = await _apiClient.patch<Map<String, dynamic>>(
+        '$_basePath/$id',
+        data: {'planned_date': plannedDateForApi(day)},
+      );
+      return Right(Task.fromJson(response.data!));
+    } on DioException catch (e) {
+      return Left(_handleDioError(e));
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('TaskRepositoryImpl.planForDay error: $e');
         debugPrint('Stack trace: $stackTrace');
       }
       return Left(UnknownFailure(e.toString()));

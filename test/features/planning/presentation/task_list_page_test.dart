@@ -250,4 +250,7 @@ class _MockTaskRepository implements TaskRepository {
 
   @override
   Future<Either<Failure, Task>> updateTaskStatus(int id, TaskStatus status) async => throw UnimplementedError();
+
+  @override
+  Future<Either<Failure, Task>> planForDay(int id, DateTime day) async => throw UnimplementedError();
 }
