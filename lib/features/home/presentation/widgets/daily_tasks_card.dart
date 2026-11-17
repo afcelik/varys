@@ -50,14 +50,17 @@ class DailyTasksCard extends ConsumerWidget {
                   color: theme.colorScheme.primary,
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  'Günlük Görevler',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.primary,
+                Expanded(
+                  child: Text(
+                    'Bugün Yapılacaklar',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.primary,
+                    ),
                   ),
                 ),
-                const Spacer(),
                 Text(
                   '$completedCount/$totalCount',
                   style: theme.textTheme.titleMedium?.copyWith(

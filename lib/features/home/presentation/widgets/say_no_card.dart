@@ -101,11 +101,15 @@ class _SayNoCardState extends ConsumerState<SayNoCard> {
                   color: AppTheme.amberHighlight,
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  'Bugün "Hayır" Diyeceğim Şey',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.amberHighlight,
+                Expanded(
+                  child: Text(
+                    'Bugün "Hayır" Diyeceğim Şey',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.amberHighlight,
+                    ),
                   ),
                 ),
               ],

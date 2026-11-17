@@ -81,7 +81,7 @@ void main() {
       // Find all task titles
       final texts = tester.widgetList<Text>(find.byType(Text))
           .map((t) => t.data ?? '')
-          .where((t) => t.isNotEmpty && t != 'Günlük Görevler' && t != 'Bugün için görev yok' && t != 'Yeni görev ekle...' && !t.contains('/'))
+          .where((t) => t.isNotEmpty && t != 'Bugün Yapılacaklar' && t != 'Bugün için görev yok' && t != 'Yeni görev ekle...' && !t.contains('/'))
           .toList();
 
       // Incomplete tasks should come first

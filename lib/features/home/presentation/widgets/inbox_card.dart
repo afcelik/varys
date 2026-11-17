@@ -35,13 +35,16 @@ class InboxCard extends StatelessWidget {
                   color: theme.colorScheme.primary,
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  'Gelen Kutusu',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
+                Expanded(
+                  child: Text(
+                    'Gelen Kutusu',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-                const Spacer(),
                 TextButton(
                   onPressed: () => context.push(AppRouter.inboxPath),
                   child: const Text('Daha Fazla'),

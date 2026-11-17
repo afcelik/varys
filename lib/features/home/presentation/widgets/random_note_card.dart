@@ -35,13 +35,16 @@ class RandomNoteCard extends StatelessWidget {
                   color: theme.colorScheme.primary,
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  'Rastgele Not',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
+                Expanded(
+                  child: Text(
+                    'Rastgele Not',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-                const Spacer(),
                 TextButton(
                   onPressed: () => context.push(AppRouter.notesPath),
                   child: const Text('Daha Fazla'),

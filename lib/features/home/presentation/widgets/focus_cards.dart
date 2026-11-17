@@ -43,14 +43,17 @@ class MainFocusCard extends ConsumerWidget {
                   color: theme.colorScheme.primary,
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  'Günün Ana Odak',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.primary,
+                Expanded(
+                  child: Text(
+                    'Günün Ana Odağı',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.primary,
+                    ),
                   ),
                 ),
-                const Spacer(),
                 if (mainFocus != null)
                   TextButton.icon(
                     onPressed: () => _clearFocus(context, ref),
@@ -134,14 +137,17 @@ class SideFocusCard extends ConsumerWidget {
                   color: theme.colorScheme.primary.withValues(alpha: 0.7),
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  'İkincil Odak',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.primary.withValues(alpha: 0.8),
+                Expanded(
+                  child: Text(
+                    'İkincil Odak',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.primary.withValues(alpha: 0.8),
+                    ),
                   ),
                 ),
-                const Spacer(),
                 if (sideFocus != null)
                   TextButton.icon(
                     onPressed: () => _clearFocus(context, ref),
