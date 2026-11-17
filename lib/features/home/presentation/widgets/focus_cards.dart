@@ -6,6 +6,7 @@ import 'package:varys/core/errors/error_utils.dart';
 import 'package:varys/core/errors/failure.dart';
 import 'package:varys/core/router/app_router.dart';
 import 'package:varys/features/home/domain/daily_plan.dart';
+import 'package:varys/features/home/domain/focus_candidates.dart';
 import 'package:varys/features/home/presentation/providers/daily_plan_provider.dart';
 import 'package:varys/features/planning/domain/task.dart';
 
@@ -81,7 +82,10 @@ class MainFocusCard extends ConsumerWidget {
   }
 
   Future<void> _selectFocus(BuildContext context, WidgetRef ref) async {
-    final selected = await context.push<Task>(AppRouter.focusTaskSelectionPath);
+    final selected = await context.push<Task>(
+      AppRouter.focusTaskSelectionPath,
+      extra: FocusSlot.main,
+    );
     if (selected == null) return; // User backed out - no change
     final result = await ref.read(dailyPlanProvider.notifier).setMainFocus(selected);
     if (context.mounted) _showFailure(context, result);
@@ -177,7 +181,10 @@ class SideFocusCard extends ConsumerWidget {
   }
 
   Future<void> _selectFocus(BuildContext context, WidgetRef ref) async {
-    final selected = await context.push<Task>(AppRouter.focusTaskSelectionPath);
+    final selected = await context.push<Task>(
+      AppRouter.focusTaskSelectionPath,
+      extra: FocusSlot.side,
+    );
     if (selected == null) return; // User backed out - no change
     final result = await ref.read(dailyPlanProvider.notifier).setSideFocus(selected);
     if (context.mounted) _showFailure(context, result);

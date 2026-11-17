@@ -5,6 +5,7 @@ import 'package:varys/features/auth/domain/auth_notifier.dart';
 import 'package:varys/features/auth/domain/auth_state.dart';
 import 'package:varys/features/auth/presentation/login_page.dart';
 import 'package:varys/features/home/presentation/home_screen.dart';
+import 'package:varys/features/home/domain/focus_candidates.dart';
 import 'package:varys/features/home/presentation/focus_task_selection_page.dart';
 import 'package:varys/features/inbox/presentation/inbox_screen.dart';
 import 'package:varys/features/notes/presentation/notes_screen.dart';
@@ -141,9 +142,18 @@ class AppRouter {
         GoRoute(
           path: focusTaskSelectionPath,
           name: 'focus-task-selection',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: FocusTaskSelectionPage(),
-          ),
+          // The slot must come as extra (from the focus cards). Without it
+          // (deep link, notification, wrong type) show an error page, no
+          // silent default. Not a redirect: go_router's redirect on push adds
+          // a second /home to the stack.
+          pageBuilder: (context, state) {
+            final extra = state.extra;
+            return NoTransitionPage(
+              child: extra is FocusSlot
+                  ? FocusTaskSelectionPage(slot: extra)
+                  : const FocusSelectionUnavailablePage(),
+            );
+          },
         ),
         // Main app shell with navigation (3 tabs: Home, Planning, Varys)
         StatefulShellRoute.indexedStack(

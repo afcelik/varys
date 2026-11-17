@@ -2,164 +2,159 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:varys/core/errors/error_utils.dart';
-import 'package:varys/features/planning/data/task_repository_impl.dart';
-import 'package:varys/features/planning/domain/task.dart' show Task, TaskFilter;
-import 'package:varys/features/planning/domain/task.dart' as task_ext;
-import 'package:varys/features/planning/domain/task_repository.dart' show TaskRepository;
+import 'package:varys/features/home/domain/daily_plan.dart';
+import 'package:varys/features/home/domain/focus_candidates.dart';
+import 'package:varys/features/home/presentation/providers/daily_plan_provider.dart';
+import 'package:varys/features/home/presentation/widgets/add_from_planning_sheet.dart';
+import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/shared/widgets/back_arrow.dart';
 
-/// Full-screen page for selecting a focus task.
-/// Accessed via context.push() from the Home screen.
-/// Returns the selected Task or null if user backs out (no change).
-/// Clearing focus is done from the card's "Clear" action, not here.
+/// Full-screen page for choosing the focus task of [slot] from today's
+/// plan ("Bugün Yapılacaklar"). Opened via context.push() from the focus cards.
+///
+/// Pop contract: returns the chosen [Task], or null when nothing changes
+/// (back, or tapping the slot's current focus). Null never clears a focus;
+/// clearing is done from the card's "Temizle" action.
 class FocusTaskSelectionPage extends ConsumerWidget {
-  const FocusTaskSelectionPage({super.key});
+  const FocusTaskSelectionPage({super.key, required this.slot});
+
+  final FocusSlot slot;
+
+  static const String mainTitle = 'Ana odak seç';
+  static const String sideTitle = 'İkincil odak seç';
+  static const String emptyMessage = 'Bugün için seçilebilecek görev yok';
+  static const String retryLabel = 'Tekrar dene';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final taskRepositoryAsync = ref.watch(taskRepositoryProvider);
+    final planAsync = ref.watch(dailyPlanProvider);
+    // A loaded plan stays on screen while it reloads (invalidate, or after
+    // addTasksToDay); spinner/error only when there is no plan yet.
+    final plan = planAsync.valueOrNull;
+
+    final Widget body;
+    if (plan != null) {
+      body = _CandidateList(plan: plan, slot: slot);
+    } else if (planAsync.hasError && !planAsync.isLoading) {
+      body = _ErrorView(
+        message: userMessage(planAsync.error!),
+        onRetry: () => ref.invalidate(dailyPlanProvider),
+      );
+    } else {
+      body = const Center(child: CircularProgressIndicator());
+    }
 
     return Scaffold(
       appBar: AppBar(
         leading: const BackArrow(),
-        title: const Text('Odak Görevi Seç'),
+        title: Text(slot == FocusSlot.main ? mainTitle : sideTitle),
+        actions: [
+          // Tap target pinned to at least 48x48 on every platform.
+          IconButton(
+            onPressed: () => showAddFromPlanningSheet(context),
+            tooltip: AddFromPlanningSheet.title,
+            icon: const Icon(Icons.playlist_add),
+            visualDensity: VisualDensity.standard,
+            style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.padded),
+          ),
+        ],
       ),
-      body: taskRepositoryAsync.when(
-        data: (taskRepository) => _TaskListView(taskRepository: taskRepository),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => _ErrorView(
-          message: userMessage(error),
-          onRetry: () => ref.invalidate(taskRepositoryProvider),
-        ),
-      ),
+      body: body,
     );
   }
 }
 
-/// Error view for failed states
-class _ErrorView extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
+class _CandidateList extends StatelessWidget {
+  const _CandidateList({required this.plan, required this.slot});
 
-  const _ErrorView({
-    required this.message,
-    required this.onRetry,
-  });
+  final DailyPlan plan;
+  final FocusSlot slot;
+
+  @override
+  Widget build(BuildContext context) {
+    final candidates = buildFocusCandidates(plan, slot);
+    if (candidates.isEmpty) return const _EmptyView();
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: candidates.length,
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (context, index) => _CandidateTile(candidate: candidates[index]),
+    );
+  }
+}
+
+class _CandidateTile extends StatelessWidget {
+  const _CandidateTile({required this.candidate});
+
+  final FocusCandidate candidate;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final task = candidate.task;
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.error_outline,
-              size: 64,
-              color: theme.colorScheme.error,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Bir hata oluştu',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Tekrar Dene'),
-            ),
-          ],
-        ),
-      ),
+    final title = Text(
+      task.title,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.titleMedium,
     );
+    final leading = Icon(
+      task.status == TaskStatus.inProgress ? Icons.timelapse : Icons.radio_button_unchecked,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    switch (candidate.state) {
+      case FocusCandidateState.selectable:
+        return ListTile(
+          leading: leading,
+          title: title,
+          onTap: () => context.pop(task),
+        );
+      case FocusCandidateState.selected:
+        return ListTile(
+          leading: leading,
+          title: title,
+          trailing: Icon(Icons.check_circle, color: theme.colorScheme.primary),
+          selected: true,
+          // Already this slot's focus: go back without a change.
+          onTap: () => context.pop(),
+        );
+      case FocusCandidateState.blockedByOther:
+      case FocusCandidateState.pending:
+        return Opacity(
+          opacity: 0.5,
+          child: ListTile(
+            enabled: false,
+            leading: leading,
+            title: title,
+            trailing: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 120),
+              child: Text(
+                candidate.label!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelMedium,
+              ),
+            ),
+          ),
+        );
+    }
   }
 }
 
-/// List view of tasks for selection
-class _TaskListView extends ConsumerWidget {
-  final TaskRepository taskRepository;
-
-  const _TaskListView({required this.taskRepository});
+class _EmptyView extends StatelessWidget {
+  const _EmptyView();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return FutureBuilder(
-      future: taskRepository.getTasksByFilter(TaskFilter.inProgress),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (snapshot.hasError) {
-          return _ErrorView(
-            message: userMessage(snapshot.error!),
-            onRetry: () => ref.invalidate(taskRepositoryProvider),
-          );
-        }
-
-        final result = snapshot.data!;
-        return result.fold(
-          (failure) => _ErrorView(
-            message: userMessage(failure),
-            onRetry: () => ref.invalidate(taskRepositoryProvider),
-          ),
-          (inProgressTasks) => _buildTaskList(context, inProgressTasks, ref),
-        );
-      },
-    );
-  }
-
-  Widget _buildTaskList(BuildContext context, List<Task> inProgressTasks, WidgetRef ref) {
-    // Also fetch completed tasks to show at the bottom
-    return FutureBuilder(
-      future: taskRepository.getTasksByFilter(TaskFilter.completed),
-      builder: (context, completedSnapshot) {
-        if (completedSnapshot.connectionState == ConnectionState.waiting) {
-          return _buildListWithTasks(context, inProgressTasks, [], Theme.of(context));
-        }
-
-        if (completedSnapshot.hasError) {
-          return _buildListWithTasks(context, inProgressTasks, [], Theme.of(context));
-        }
-
-        final completedResult = completedSnapshot.data!;
-        final completedTasks = completedResult.fold(
-          (failure) => <Task>[],
-          (tasks) => tasks,
-        );
-
-        return _buildListWithTasks(context, inProgressTasks, completedTasks, Theme.of(context));
-      },
-    );
-  }
-
-  Widget _buildListWithTasks(
-    BuildContext context,
-    List<Task> inProgressTasks,
-    List<Task> completedTasks,
-    ThemeData theme,
-  ) {
-    final allTasks = [...inProgressTasks, ...completedTasks];
-
-    if (allTasks.isEmpty) {
-      return Center(
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               Icons.task_alt_outlined,
@@ -168,91 +163,84 @@ class _TaskListView extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Henüz görev yok',
-              style: theme.textTheme.headlineSmall?.copyWith(
+              FocusTaskSelectionPage.emptyMessage,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Planlama sekmesinden görev ekleyin',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-              ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () => showAddFromPlanningSheet(context),
+              icon: const Icon(Icons.playlist_add),
+              label: const Text(AddFromPlanningSheet.title),
             ),
           ],
         ),
-      );
-    }
+      ),
+    );
+  }
+}
 
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: allTasks.length + 1, // +1 for section divider
-      separatorBuilder: (context, index) {
-        // Add a divider between in-progress and completed sections
-        if (index == inProgressTasks.length && inProgressTasks.isNotEmpty && completedTasks.isNotEmpty) {
-          return const Divider(height: 32);
-        }
-        return const Divider(height: 1);
-      },
-      itemBuilder: (context, index) {
-        // Section header for completed tasks
-        if (index == inProgressTasks.length && inProgressTasks.isNotEmpty && completedTasks.isNotEmpty) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              'Tamamlananlar',
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+class _ErrorView extends StatelessWidget {
+  const _ErrorView({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: theme.colorScheme.error),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyLarge,
             ),
-          );
-        }
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text(FocusTaskSelectionPage.retryLabel),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
-        // Adjust index for completed tasks
-        final taskIndex = index > inProgressTasks.length ? index - 1 : index;
-        if (taskIndex >= allTasks.length) return const SizedBox.shrink();
+/// Shown when the focus selection route is opened without a [FocusSlot]
+/// extra (deep link, notification, wrong type). No silent default slot.
+class FocusSelectionUnavailablePage extends StatelessWidget {
+  const FocusSelectionUnavailablePage({super.key});
 
-        final task = allTasks[taskIndex];
-        final isCompleted = task.isCompleted; // Uses TaskStatusExtension
+  static const String message = 'Bu sayfa doğrudan açılamaz.';
 
-        return ListTile(
-          leading: Icon(
-            isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
-            color: isCompleted
-                ? theme.colorScheme.primary
-                : theme.colorScheme.onSurfaceVariant,
-          ),
-          title: Text(
-            task.title,
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: isCompleted
-                  ? theme.colorScheme.onSurfaceVariant
-                  : theme.colorScheme.onSurface,
-              decoration: isCompleted ? TextDecoration.lineThrough : null,
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(leading: const BackArrow()),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            message,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
-          subtitle: task.description?.isNotEmpty == true
-              ? Text(
-                  task.description!,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                )
-              : null,
-          trailing: isCompleted
-              ? Icon(
-                  Icons.done_all,
-                  color: theme.colorScheme.primary,
-                  size: 20,
-                )
-              : null,
-          onTap: () => context.pop(task),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        );
-      },
+        ),
+      ),
     );
   }
 }
