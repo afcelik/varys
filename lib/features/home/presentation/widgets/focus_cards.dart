@@ -310,10 +310,14 @@ class _EmptyFocusTile extends StatelessWidget {
               size: compact ? 20 : 24,
             ),
             SizedBox(width: compact ? 10 : 12),
-            Text(
-              label,
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                ),
               ),
             ),
           ],

@@ -4,8 +4,9 @@
 // realistic titles so the worst case is drawn: both focus slots filled (both
 // "Temizle" buttons visible), a long say-no text, long open and done task
 // titles, and long routine titles with visible streaks (one routine done).
-// Every width runs at text scale 1.0 and 1.5. The routines card is also
-// drawn in its empty, loading and error states.
+// Every width runs at text scale 1.0 and 1.5. Home is also drawn with both
+// focus slots empty, with everything empty, and with the plan in its error
+// and loading states; the routines card in its empty, loading and error states.
 
 import 'dart:async';
 
@@ -29,9 +30,13 @@ import 'package:varys/features/home/domain/focus_candidates.dart';
 import 'package:varys/features/home/domain/today_provider.dart';
 import 'package:varys/features/home/presentation/focus_task_selection_page.dart';
 import 'package:varys/features/home/presentation/home_screen.dart';
+import 'package:varys/features/home/presentation/widgets/daily_plan_state_widgets.dart';
 import 'package:varys/features/home/presentation/widgets/daily_tasks_card.dart';
 import 'package:varys/features/home/presentation/widgets/focus_cards.dart';
+import 'package:varys/features/home/presentation/widgets/inbox_card.dart';
+import 'package:varys/features/home/presentation/widgets/random_note_card.dart';
 import 'package:varys/features/home/presentation/widgets/routines_card.dart';
+import 'package:varys/features/home/presentation/widgets/say_no_card.dart';
 import 'package:varys/features/planning/data/task_repository_impl.dart';
 import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/features/planning/domain/task_repository.dart';
@@ -144,6 +149,20 @@ List<RoutineDayItem> _routines() {
       ),
   ];
 }
+
+/// Worst case with both focus slots empty; every other card stays filled.
+DailyPlan _focusesEmptyPlan() => _worstCasePlan().copyWith(mainFocus: null, sideFocus: null);
+
+/// Everything empty: no focus, no say-no text, no tasks (routines: Right([])).
+DailyPlan _allEmptyPlan() => DailyPlan(planDate: _day, tasks: const []);
+
+// UI texts with no static const in lib/ (typed here; keep in sync).
+const _mainEmptyLabel = 'Ana odak seç'; // focus_cards.dart MainFocusCard
+const _sideEmptyLabel = 'İkincil odak seç'; // focus_cards.dart SideFocusCard
+const _sayNoHint = 'Örn: Sosyal medya, gereksiz toplantılar...'; // say_no_card.dart
+const _noTasksText = 'Bugün için görev yok'; // daily_tasks_card.dart _EmptyTasks
+const _planErrorTitle = 'Plan yüklenemedi'; // daily_plan_state_widgets.dart
+const _planRetryText = 'Tekrar Dene'; // daily_plan_state_widgets.dart
 
 const _widths = [360.0, 600.0, 800.0, 801.0, 1000.0, 1200.0, 1400.0, 1800.0];
 const _textScales = [1.0, 1.5];
@@ -279,15 +298,186 @@ void main() {
     expect(size.height, greaterThanOrEqualTo(48));
   }
 
-  group('Home has no overflow with the real side rail / bottom bar layout', () {
+  /// The real shell around Home: side rail > 800px, bottom bar <= 800px,
+  /// and the Home app bar.
+  void expectShell(double width) {
+    if (width > 800) {
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(find.byType(NavigationBar), findsNothing);
+    } else {
+      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byType(NavigationRail), findsNothing);
+    }
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('Ana Sayfa')),
+      findsOneWidget,
+    );
+  }
+
+  /// Both empty focus tiles: label drawn, tap target >= 48x48, tile fully on
+  /// screen and the label fully inside its tile (an overflowing label is not).
+  void expectEmptyFocusTargets(WidgetTester tester, double width) {
+    for (final (card, label) in [
+      (MainFocusCard, _mainEmptyLabel),
+      (SideFocusCard, _sideEmptyLabel),
+    ]) {
+      final text = find.descendant(of: find.byType(card), matching: find.text(label));
+      expect(text, findsOneWidget, reason: label);
+      final tile = find.ancestor(of: text, matching: find.byType(InkWell)).first;
+      final size = tester.getSize(tile);
+      expect(size.width, greaterThanOrEqualTo(48), reason: label);
+      expect(size.height, greaterThanOrEqualTo(48), reason: label);
+      final tileRect = tester.getRect(tile);
+      expect(tileRect.left, greaterThanOrEqualTo(0), reason: label);
+      expect(tileRect.right, lessThanOrEqualTo(width), reason: label);
+      final textRect = tester.getRect(text);
+      expect(textRect.left, greaterThanOrEqualTo(tileRect.left), reason: label);
+      expect(textRect.right, lessThanOrEqualTo(tileRect.right), reason: label);
+    }
+    expect(find.text('Temizle'), findsNothing);
+    expect(find.text('Günün Ana Odağı'), findsOneWidget);
+    expect(find.text('İkincil Odak'), findsOneWidget);
+  }
+
+  /// Plan loading/error replaces the whole Home body: no plan cards, no
+  /// routines card, no placeholder cards.
+  void expectNoPlanCards() {
+    for (final type in [
+      MainFocusCard,
+      SideFocusCard,
+      SayNoCard,
+      DailyTasksCard,
+      RoutinesCard,
+      RandomNoteCard,
+      InboxCard,
+    ]) {
+      expect(find.byType(type), findsNothing, reason: '$type');
+    }
+  }
+
+  group('Home states have no overflow with the real side rail / bottom bar layout', () {
+    Finder inRoutines(Finder f) => find.descendant(of: find.byType(RoutinesCard), matching: f);
+    Finder inTasks(Finder f) => find.descendant(of: find.byType(DailyTasksCard), matching: f);
+
     for (final width in _widths) {
       for (final textScale in _textScales) {
-        testWidgets('width ${width.toInt()}px, textScale $textScale', (tester) async {
+        final label = 'width ${width.toInt()}px, textScale $textScale';
+
+        testWidgets('(a) all filled, $label', (tester) async {
           await pumpApp(tester, width, textScale: textScale);
           expect(tester.takeException(), isNull);
           expectWorstCaseDrawn(tester, width);
         });
+
+        testWidgets('(b) focuses empty, others filled, $label', (tester) async {
+          final plan = _focusesEmptyPlan();
+          when(() => planRepo.getPlan(any())).thenAnswer((_) async => Right(plan));
+          await pumpApp(tester, width, textScale: textScale);
+          expect(tester.takeException(), isNull);
+          expect(find.byType(HomeScreen), findsOneWidget);
+          expectShell(width);
+          expectEmptyFocusTargets(tester, width);
+          expect(find.text(_sayNoText), findsOneWidget);
+          for (final title in _taskTitles.values) {
+            expect(inTasks(find.text(title)), findsOneWidget, reason: title);
+          }
+          for (final title in _routineTitles.values) {
+            expect(inRoutines(find.text(title)), findsOneWidget, reason: title);
+          }
+        });
+
+        testWidgets('(c) all empty, $label', (tester) async {
+          final plan = _allEmptyPlan();
+          when(() => planRepo.getPlan(any())).thenAnswer((_) async => Right(plan));
+          when(() => taskRepo.getTasksByFilter(any())).thenAnswer((_) async => const Right([]));
+          when(() => routineRepo.getRoutinesForDay(any())).thenAnswer((_) async => const Right([]));
+          await pumpApp(tester, width, textScale: textScale);
+          expect(tester.takeException(), isNull);
+          expect(find.byType(HomeScreen), findsOneWidget);
+          expectShell(width);
+          expectEmptyFocusTargets(tester, width);
+          expect(
+            find.descendant(of: find.byType(SayNoCard), matching: find.text(_sayNoHint)),
+            findsOneWidget,
+          );
+          expect(inTasks(find.text(_noTasksText)), findsOneWidget);
+          expect(inTasks(find.text('0/0')), findsOneWidget);
+          expect(inRoutines(find.text(RoutinesCard.emptyText)), findsOneWidget);
+          expect(inRoutines(find.text('0/0')), findsOneWidget);
+        });
+
+        testWidgets('(d) plan error, $label', (tester) async {
+          const failure = NetworkFailure('timeout');
+          when(() => planRepo.getPlan(any())).thenAnswer((_) async => const Left(failure));
+          await pumpApp(tester, width, textScale: textScale);
+          expect(tester.takeException(), isNull);
+          expect(find.byType(HomeScreen), findsOneWidget);
+          expectShell(width);
+          final error = find.byType(DailyPlanError);
+          expect(error, findsOneWidget);
+          Finder inError(Finder f) => find.descendant(of: error, matching: f);
+          expect(inError(find.text(_planErrorTitle)), findsOneWidget);
+          expect(inError(find.text(userMessage(failure))), findsOneWidget);
+          expect(inError(find.text(_planRetryText)), findsOneWidget);
+          expectNoPlanCards();
+        });
+
+        testWidgets('(e) plan loading, $label', (tester) async {
+          final pending = Completer<Either<Failure, DailyPlan>>();
+          addTearDown(() {
+            if (!pending.isCompleted) pending.complete(Right(_worstCasePlan()));
+          });
+          when(() => planRepo.getPlan(any())).thenAnswer((_) => pending.future);
+          await pumpApp(tester, width, textScale: textScale, settle: false);
+          expect(tester.takeException(), isNull);
+          expect(find.byType(HomeScreen), findsOneWidget);
+          expectShell(width);
+          expect(find.byType(DailyPlanLoading), findsOneWidget);
+          expect(find.byType(DailyPlanError), findsNothing);
+          expectNoPlanCards();
+        });
       }
+    }
+  });
+
+  group('Plan error "Tekrar Dene" reloads Home', () {
+    for (final (width, textScale) in [(360.0, 1.0), (1400.0, 1.5)]) {
+      testWidgets('width ${width.toInt()}px, textScale $textScale', (tester) async {
+        const failure = NetworkFailure('timeout');
+        final plan = _worstCasePlan();
+        var calls = 0;
+        when(() => planRepo.getPlan(any())).thenAnswer((_) async {
+          calls++;
+          if (calls == 1) return const Left(failure);
+          return Right(plan);
+        });
+        await pumpApp(tester, width, textScale: textScale);
+        expect(tester.takeException(), isNull);
+        expect(find.byType(DailyPlanError), findsOneWidget);
+        expect(find.text(userMessage(failure)), findsOneWidget);
+
+        await tester.tap(find.text(_planRetryText));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.byType(DailyPlanError), findsNothing);
+        expect(
+          find.descendant(of: find.byType(MainFocusCard), matching: find.text(_mainFocusTitle)),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: find.byType(SideFocusCard), matching: find.text(_sideFocusTitle)),
+          findsOneWidget,
+        );
+        for (final title in _taskTitles.values) {
+          expect(
+            find.descendant(of: find.byType(DailyTasksCard), matching: find.text(title)),
+            findsOneWidget,
+            reason: title,
+          );
+        }
+        verify(() => planRepo.getPlan(any())).called(2);
+      });
     }
   });
 
