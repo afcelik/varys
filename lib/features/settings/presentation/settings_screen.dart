@@ -3,10 +3,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:developer';
 
+import 'package:varys/core/errors/error_utils.dart';
 import 'package:varys/core/network/api_client.dart';
 import 'package:varys/core/storage/secure_storage.dart';
 import 'package:varys/features/auth/domain/auth_notifier.dart';
 import 'package:varys/shared/widgets/back_arrow.dart';
+
+/// Checks `GET /health` on [baseUrl] with a temporary client (the entered,
+/// not yet saved, server address). Overridable in tests. Not user data:
+/// it holds no state, so it is not part of the session invalidation lists.
+typedef ConnectionTester = Future<bool> Function(String baseUrl, String? authToken);
+
+final connectionTesterProvider = Provider<ConnectionTester>(
+  (ref) => (baseUrl, authToken) => ApiClient(baseUrl: baseUrl, authToken: authToken).testConnection(),
+);
 
 /// Settings screen for configuring app settings.
 ///
@@ -81,14 +91,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     });
 
     try {
-      // Create a temporary ApiClient with the entered settings
+      // Test with a temporary client built from the entered settings
+      final testConnection = ref.read(connectionTesterProvider);
       final authToken = await SecureStorage.getAuthToken();
-      final tempClient = ApiClient(
-        baseUrl: _serverUrlController.text.trim(),
-        authToken: authToken,
-      );
-
-      final success = await tempClient.testConnection();
+      final success = await testConnection(_serverUrlController.text.trim(), authToken);
 
       if (mounted) {
         setState(() {
@@ -101,7 +107,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _connectionTestResult = 'Bağlantı hatası: ${e.toString()}';
+          _connectionTestResult = 'Bağlantı hatası: ${userMessage(e)}';
           _isTestingConnection = false;
         });
       }
@@ -172,7 +178,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     labelText: 'Sunucu Adresi',
                     hintText: 'Örn: http://192.168.1.100:8000',
                     prefixIcon: Icon(Icons.dns_outlined),
-                    helperText: 'Backend API sunucusunun adresini girin',
+                    helperText: 'Sunucu adresini girin',
                   ),
                   keyboardType: TextInputType.url,
                   textInputAction: TextInputAction.next,

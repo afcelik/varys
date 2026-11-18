@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'core/router/router_provider.dart';
@@ -32,6 +33,14 @@ class VarysApp extends ConsumerWidget {
     return MaterialApp.router(
       title: 'Varys',
       theme: AppTheme.darkTheme,
+      // UI is Turkish only, regardless of the system language.
+      locale: const Locale('tr'),
+      supportedLocales: const [Locale('tr')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       routerConfig: router,
       debugShowCheckedModeBanner: false,
     );

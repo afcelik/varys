@@ -4,7 +4,6 @@ import 'dart:io';
 
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
@@ -17,6 +16,8 @@ import 'package:varys/features/routines/domain/routine.dart';
 import 'package:varys/features/routines/domain/routine_repository.dart';
 import 'package:varys/features/routines/presentation/routine_edit_screen.dart';
 import 'package:varys/features/routines/presentation/routines_screen.dart';
+
+import '../../../helpers/varys_app_harness.dart';
 
 class _MockRoutineRepository extends Mock implements RoutineRepository {}
 
@@ -123,14 +124,13 @@ void main() {
       ],
     );
     addTearDown(router.dispose);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          todayProvider.overrideWith(_FixedToday.new),
-          routineRepositoryProvider.overrideWith((ref) async => repo),
-        ],
-        child: MaterialApp.router(routerConfig: router),
-      ),
+    await pumpVarysApp(
+      tester,
+      router: router,
+      overrides: [
+        todayProvider.overrideWith(_FixedToday.new),
+        routineRepositoryProvider.overrideWith((ref) async => repo),
+      ],
     );
     await tester.pumpAndSettle();
   }
@@ -454,8 +454,9 @@ void main() {
       expect(picker.lastDate, DateTime(2100, 12, 31));
       expect(picker.initialDate, DateTime(2026, 12, 24));
 
-      // Close without depending on the picker's (English) button texts.
-      Navigator.of(tester.element(find.byType(DatePickerDialog))).pop();
+      // Close with the real (Turkish) cancel button.
+      expect(find.text('Cancel'), findsNothing);
+      await tester.tap(find.text('İptal'));
       await tester.pumpAndSettle();
 
       expect(find.byType(DatePickerDialog), findsNothing);

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,6 +16,7 @@ import 'package:varys/features/routines/presentation/routine_edit_screen.dart';
 import 'package:varys/features/routines/presentation/routines_screen.dart';
 import 'package:varys/features/settings/presentation/settings_screen.dart';
 import 'package:varys/features/varys_chat/presentation/varys_chat_screen.dart';
+import 'package:varys/shared/widgets/back_arrow.dart';
 import 'package:varys/shared/widgets/main_scaffold.dart';
 
 /// Application router configuration using GoRouter with StatefulShellRoute.
@@ -37,6 +39,11 @@ class AppRouter {
   static const String routinesPath = '/routines';
   static const String routinesNewPath = '/routines/new';
   static const String routinesEditPath = '/routines/edit';
+
+  /// Router error page (unknown path) texts.
+  static const String errorTitle = 'Sayfa bulunamadı';
+  static const String errorMessage = 'Aradığınız sayfa mevcut değil.';
+  static const String errorHomeButton = 'Ana sayfaya dön';
 
   static GoRouter createRouter(Ref ref) {
     // Get the initial auth state
@@ -190,31 +197,59 @@ class AppRouter {
           branches: shellBranches,
         ),
       ],
-      // Error handling
-      errorBuilder: (context, state) => Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, size: 64, color: Colors.red),
-              const SizedBox(height: 16),
-              Text(
-                'Page Not Found',
-                style: Theme.of(context).textTheme.headlineMedium,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                state.error?.toString() ?? 'Unknown error',
-                style: Theme.of(context).textTheme.bodyMedium,
-                textAlign: TextAlign.center,
-              ),
-            ],
+      // Error handling: fixed Turkish text only; the error detail is never
+      // shown, only printed in debug builds.
+      errorBuilder: (context, state) {
+        if (kDebugMode) debugPrint('Router error: ${state.error}');
+        return const _RouterErrorPage();
+      },
+    );
+
+    return router;
+  }
+}
+
+/// Shown for an unknown path (deep link, notification, push). Leaves with
+/// BackArrow (pop, or /home when nothing to pop) or the home button.
+class _RouterErrorPage extends StatelessWidget {
+  const _RouterErrorPage();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(leading: const BackArrow()),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.error_outline, size: 64, color: theme.colorScheme.error),
+                const SizedBox(height: 16),
+                Text(
+                  AppRouter.errorTitle,
+                  style: theme.textTheme.headlineMedium,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  AppRouter.errorMessage,
+                  style: theme.textTheme.bodyMedium,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                FilledButton(
+                  onPressed: () => context.go(AppRouter.homePath),
+                  child: const Text(AppRouter.errorHomeButton),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
-
-    return router;
   }
 }
 

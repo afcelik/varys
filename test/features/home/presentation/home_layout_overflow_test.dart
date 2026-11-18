@@ -23,7 +23,6 @@ import 'package:mocktail/mocktail.dart';
 import 'package:varys/core/errors/error_utils.dart';
 import 'package:varys/core/errors/failure.dart';
 import 'package:varys/core/router/app_router.dart';
-import 'package:varys/core/router/router_provider.dart';
 import 'package:varys/features/home/data/daily_plan_repository.dart';
 import 'package:varys/features/home/domain/daily_plan.dart';
 import 'package:varys/features/home/domain/focus_candidates.dart';
@@ -38,6 +37,8 @@ import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/features/planning/domain/task_repository.dart';
 import 'package:varys/features/routines/data/routine_repository_impl.dart';
 import 'package:varys/features/routines/domain/routine.dart';
+
+import '../../../helpers/varys_app_harness.dart';
 import 'package:varys/features/routines/domain/routine_repository.dart';
 
 class _MockDailyPlanRepository extends Mock implements DailyPlanRepository {}
@@ -188,17 +189,11 @@ void main() {
     tester.view.physicalSize = Size(width, 3000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    if (textScale != 1.0) {
-      tester.platformDispatcher.textScaleFactorTestValue = textScale;
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-    }
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: overrides(),
-        child: Consumer(
-          builder: (context, ref, _) => MaterialApp.router(routerConfig: ref.watch(routerProvider)),
-        ),
-      ),
+    // Real app root with the real routerProvider (no router override).
+    await pumpVarysApp(
+      tester,
+      overrides: overrides(),
+      textScale: textScale != 1.0 ? textScale : null,
     );
     if (settle) {
       await tester.pumpAndSettle();
@@ -351,10 +346,6 @@ void main() {
     tester.view.physicalSize = Size(width, 3000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    if (textScale != 1.0) {
-      tester.platformDispatcher.textScaleFactorTestValue = textScale;
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-    }
     final router = GoRouter(
       routes: [
         GoRoute(
@@ -374,11 +365,11 @@ void main() {
       ],
     );
     addTearDown(router.dispose);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: overrides(),
-        child: MaterialApp.router(routerConfig: router),
-      ),
+    await pumpVarysApp(
+      tester,
+      router: router,
+      overrides: overrides(),
+      textScale: textScale != 1.0 ? textScale : null,
     );
     await tester.tap(find.text('Aç'));
     await tester.pumpAndSettle();

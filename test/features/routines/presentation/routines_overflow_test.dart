@@ -10,7 +10,6 @@ import 'dart:io';
 
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
@@ -23,6 +22,8 @@ import 'package:varys/features/routines/domain/routine.dart';
 import 'package:varys/features/routines/domain/routine_repository.dart';
 import 'package:varys/features/routines/presentation/routine_edit_screen.dart';
 import 'package:varys/features/routines/presentation/routines_screen.dart';
+
+import '../../../helpers/varys_app_harness.dart';
 
 class _MockRoutineRepository extends Mock implements RoutineRepository {}
 
@@ -106,20 +107,14 @@ void main() {
       ],
     );
     addTearDown(router.dispose);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          todayProvider.overrideWith(_FixedToday.new),
-          routineRepositoryProvider.overrideWith((ref) async => repo),
-        ],
-        child: MaterialApp.router(
-          routerConfig: router,
-          builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
-            child: child!,
-          ),
-        ),
-      ),
+    await pumpVarysApp(
+      tester,
+      router: router,
+      textScale: scale,
+      overrides: [
+        todayProvider.overrideWith(_FixedToday.new),
+        routineRepositoryProvider.overrideWith((ref) async => repo),
+      ],
     );
     await tester.pumpAndSettle();
   }
