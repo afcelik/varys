@@ -1,0 +1,16 @@
+{
+  "id": 2,
+  "title": "Spor",
+  "description": null,
+  "recurrence_type": "weekly",
+  "days_of_week": [
+    0,
+    2,
+    4
+  ],
+  "day_of_month": null,
+  "interval_days": null,
+  "start_date": "2026-11-02",
+  "created_at": "2026-11-18T07:17:29",
+  "updated_at": "2026-11-18T07:17:29"
+}

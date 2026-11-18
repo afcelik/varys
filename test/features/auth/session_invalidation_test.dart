@@ -25,6 +25,7 @@ import 'package:varys/features/routines/data/routine_repository_impl.dart';
 import 'package:varys/features/routines/domain/routine.dart';
 import 'package:varys/features/routines/domain/routine_repository.dart';
 import 'package:varys/features/routines/presentation/routines_day_notifier.dart';
+import 'package:varys/features/routines/presentation/routines_list_notifier.dart';
 
 class _MockDailyPlanRepository extends Mock implements DailyPlanRepository {}
 
@@ -52,6 +53,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late List<RoutineDayItem> routines;
+  late List<Routine> routineList;
   late List<Task> tasks;
   late _MockDailyPlanRepository planRepo;
   late _MockTaskRepository taskRepo;
@@ -64,6 +66,9 @@ void main() {
     registerFallbackValue(TaskFilter.all);
     routines = (jsonDecode(File('test/fixtures/routines_day.json').readAsStringSync()) as List)
         .map((e) => RoutineDayItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+    routineList = (jsonDecode(File('test/fixtures/routines_list.json').readAsStringSync()) as List)
+        .map((e) => Routine.fromJson(e as Map<String, dynamic>))
         .toList();
     final planJson = jsonDecode(File('test/fixtures/daily_plan_with_tasks.json').readAsStringSync())
         as Map<String, dynamic>;
@@ -81,6 +86,7 @@ void main() {
         .thenAnswer((_) async => Right(DailyPlan(planDate: _day, tasks: [tasks.first])));
     when(() => taskRepo.getTasksByFilter(any())).thenAnswer((_) async => Right([tasks.first]));
     when(() => routineRepo.getRoutinesForDay(any())).thenAnswer((_) async => const Left(_failure));
+    when(() => routineRepo.getRoutines()).thenAnswer((_) async => Right([routineList.first]));
 
     container = ProviderContainer(overrides: [
       todayProvider.overrideWith(_FixedToday.new),
@@ -96,12 +102,14 @@ void main() {
     container.listen(dailyPlanProvider, (_, _) {});
     container.listen(taskListNotifierProvider, (_, _) {});
     container.listen(routinesForDayProvider(_day), (_, _) {});
+    container.listen(routinesListProvider, (_, _) {}); // open /routines page
     await _flush();
 
     expect(container.read(dailyPlanProvider).requireValue.tasks, [tasks.first]);
     expect(container.read(taskListNotifierProvider).requireValue.tasks.requireValue,
         [tasks.first]);
     expect(container.read(routinesForDayProvider(_day)).hasError, isTrue);
+    expect(container.read(routinesListProvider).requireValue, [routineList.first]);
   });
 
   tearDown(() => container.dispose());
@@ -112,6 +120,7 @@ void main() {
         .thenAnswer((_) async => Right(DailyPlan(planDate: _day, tasks: tasks)));
     when(() => taskRepo.getTasksByFilter(any())).thenAnswer((_) async => Right(tasks));
     when(() => routineRepo.getRoutinesForDay(any())).thenAnswer((_) async => Right(routines));
+    when(() => routineRepo.getRoutines()).thenAnswer((_) async => Right(routineList));
     await auth.updateToken(_newToken);
     await _flush();
   }
@@ -122,10 +131,13 @@ void main() {
     final routineValue = container.read(routinesForDayProvider(_day));
     expect(routineValue.hasError, isFalse, reason: 'old error state must be gone');
     expect(routineValue.requireValue, routines);
+    expect(container.read(routinesListProvider).requireValue, routineList,
+        reason: 'old routine list must be gone');
 
     verify(() => planRepo.getPlan(_day)).called(2);
     verify(() => taskRepo.getTasksByFilter(TaskFilter.all)).called(2);
     verify(() => routineRepo.getRoutinesForDay(_day)).called(2);
+    verify(() => routineRepo.getRoutines()).called(2);
   }
 
   test('session expiry invalidates routines, daily plan and tasks; re-login reloads them',
@@ -153,13 +165,14 @@ void main() {
     AuthNotifier.invalidateUserData(userData.add);
     expect(userData.toSet(), {
       routinesForDayProvider,
+      routinesListProvider,
       routineRepositoryProvider,
       dailyPlanProvider,
       dailyPlanRepositoryProvider,
       taskListNotifierProvider,
       taskRepositoryProvider,
     });
-    expect(userData, hasLength(6));
+    expect(userData, hasLength(7));
 
     final infra = <ProviderOrFamily>[];
     AuthNotifier.invalidateSessionInfra(infra.add);
@@ -171,6 +184,7 @@ void main() {
     // invalidateUserData can trigger the reload checked above.
     await loginWithNewData();
     expect(container.read(routinesForDayProvider(_day)).hasError, isTrue);
+    expect(container.read(routinesListProvider).requireValue, [routineList.first]);
     expect(container.read(dailyPlanProvider).requireValue.tasks, [tasks.first]);
   });
 }

@@ -87,6 +87,7 @@ void main() {
     when(() => planRepo.getPlan(any())).thenAnswer((_) async => Right(plan));
     when(() => taskRepo.getTasksByFilter(any())).thenAnswer((_) async => Right(plan.tasks));
     when(() => routineRepo.getRoutinesForDay(any())).thenAnswer((_) async => Right(routines));
+    when(() => routineRepo.getRoutines()).thenAnswer((_) async => const Right([]));
   });
 
   List<Override> overrides() => [
@@ -297,7 +298,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(RoutinesScreen), findsOneWidget);
-    expect(find.text(RoutinesScreen.placeholderText), findsOneWidget);
+    expect(find.text(RoutinesScreen.emptyText), findsOneWidget);
+    verify(() => routineRepo.getRoutines()).called(1);
     expect(find.widgetWithText(AppBar, 'Rutinler'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.arrow_back));

@@ -103,4 +103,77 @@ void main() {
     expect(json.containsKey('completed'), isFalse);
     expect(Routine.fromJson(jsonDecode(jsonEncode(json)) as Map<String, dynamic>), routine);
   });
+
+  group('GET /routines and POST /routines (Routine, RoutineRead)', () {
+    // test/fixtures/routines_list.json = GET /routines response and
+    // test/fixtures/routine_created.json = POST /routines 201 response,
+    // generated from varys-api (in-memory DB, real router and schemas).
+    late List<Map<String, dynamic>> rawList;
+    late List<Routine> routines;
+
+    setUp(() {
+      rawList = (jsonDecode(File('test/fixtures/routines_list.json').readAsStringSync())
+              as List<dynamic>)
+          .cast<Map<String, dynamic>>();
+      routines = rawList.map(Routine.fromJson).toList();
+    });
+
+    test('list parses in backend order with all four recurrence types', () {
+      expect(routines.map((r) => r.id), [1, 2, 3, 4]);
+      expect(routines.map((r) => r.recurrenceType), [
+        RecurrenceType.daily,
+        RecurrenceType.weekly,
+        RecurrenceType.monthly,
+        RecurrenceType.interval,
+      ]);
+      expect(rawList.first.containsKey('current_streak'), isFalse,
+          reason: 'GET /routines carries no streaks');
+    });
+
+    test('each type has only its own recurrence field; the rest are null', () {
+      final [daily, weekly, monthly, interval] = routines;
+      expect([daily.daysOfWeek, daily.dayOfMonth, daily.intervalDays], [null, null, null]);
+      expect(weekly.daysOfWeek, [0, 2, 4]);
+      expect([weekly.dayOfMonth, weekly.intervalDays], [null, null]);
+      expect(monthly.dayOfMonth, 31);
+      expect([monthly.daysOfWeek, monthly.intervalDays], [null, null]);
+      expect(interval.intervalDays, 3);
+      expect([interval.daysOfWeek, interval.dayOfMonth], [null, null]);
+    });
+
+    test('null description stays null; set description is kept', () {
+      expect(routines[0].description, '8 bardak');
+      expect(routines[1].description, isNull);
+      expect(routines[2].description, isNull);
+      expect(routines[3].description, 'Salon ve balkon');
+    });
+
+    test('start_date is a plain date with no time zone', () {
+      expect(rawList[2]['start_date'], '2026-10-15');
+      expect(routines[2].startDate, DateTime(2026, 10, 15));
+      expect(routines[2].startDate.isUtc, isFalse);
+    });
+
+    test('list items round-trip through toJson with the same keys', () {
+      for (var i = 0; i < routines.length; i++) {
+        final json = routines[i].toJson();
+        expect(json.keys.toSet(), rawList[i].keys.toSet());
+        expect(Routine.fromJson(jsonDecode(jsonEncode(json)) as Map<String, dynamic>),
+            routines[i]);
+      }
+    });
+
+    test('POST 201 body parses as Routine (weekly, days sorted by the backend)', () {
+      final raw = jsonDecode(File('test/fixtures/routine_created.json').readAsStringSync())
+          as Map<String, dynamic>;
+      final created = Routine.fromJson(raw);
+      expect(created.id, 2);
+      expect(created.title, 'Spor');
+      expect(created.recurrenceType, RecurrenceType.weekly);
+      expect(created.daysOfWeek, [0, 2, 4]);
+      expect(created.description, isNull);
+      expect(created.startDate, DateTime(2026, 11, 2));
+      expect(created.createdAt.isUtc, isFalse);
+    });
+  });
 }

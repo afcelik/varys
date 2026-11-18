@@ -1,0 +1,54 @@
+[
+  {
+    "id": 1,
+    "title": "Su iç",
+    "description": "8 bardak",
+    "recurrence_type": "daily",
+    "days_of_week": null,
+    "day_of_month": null,
+    "interval_days": null,
+    "start_date": "2026-11-01",
+    "created_at": "2026-11-18T07:17:29",
+    "updated_at": "2026-11-18T07:17:29"
+  },
+  {
+    "id": 2,
+    "title": "Spor",
+    "description": null,
+    "recurrence_type": "weekly",
+    "days_of_week": [
+      0,
+      2,
+      4
+    ],
+    "day_of_month": null,
+    "interval_days": null,
+    "start_date": "2026-11-02",
+    "created_at": "2026-11-18T07:17:29",
+    "updated_at": "2026-11-18T07:17:29"
+  },
+  {
+    "id": 3,
+    "title": "Fatura öde",
+    "description": null,
+    "recurrence_type": "monthly",
+    "days_of_week": null,
+    "day_of_month": 31,
+    "interval_days": null,
+    "start_date": "2026-10-15",
+    "created_at": "2026-11-18T07:17:29",
+    "updated_at": "2026-11-18T07:17:29"
+  },
+  {
+    "id": 4,
+    "title": "Bitki sula",
+    "description": "Salon ve balkon",
+    "recurrence_type": "interval",
+    "days_of_week": null,
+    "day_of_month": null,
+    "interval_days": 3,
+    "start_date": "2026-11-10",
+    "created_at": "2026-11-18T07:17:29",
+    "updated_at": "2026-11-18T07:17:29"
+  }
+]

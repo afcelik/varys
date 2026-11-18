@@ -22,6 +22,10 @@ class _FakeRoutineRepository implements RoutineRepository {
   final gets = <(DateTime, Completer<_DayResult>)>[];
   final writes = <(String, int, DateTime, Completer<_WriteResult>)>[];
 
+  // CRUD methods are not used by the day notifier.
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
   @override
   Future<_DayResult> getRoutinesForDay(DateTime day) {
     final c = Completer<_DayResult>();

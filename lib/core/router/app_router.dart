@@ -10,6 +10,8 @@ import 'package:varys/features/home/presentation/focus_task_selection_page.dart'
 import 'package:varys/features/inbox/presentation/inbox_screen.dart';
 import 'package:varys/features/notes/presentation/notes_screen.dart';
 import 'package:varys/features/planning/presentation/planning_screen.dart';
+import 'package:varys/features/routines/domain/routine.dart';
+import 'package:varys/features/routines/presentation/routine_edit_screen.dart';
 import 'package:varys/features/routines/presentation/routines_screen.dart';
 import 'package:varys/features/settings/presentation/settings_screen.dart';
 import 'package:varys/features/varys_chat/presentation/varys_chat_screen.dart';
@@ -33,6 +35,8 @@ class AppRouter {
   static const String loginPath = '/login';
   static const String focusTaskSelectionPath = '/focus-task-selection';
   static const String routinesPath = '/routines';
+  static const String routinesNewPath = '/routines/new';
+  static const String routinesEditPath = '/routines/edit';
 
   static GoRouter createRouter(Ref ref) {
     // Get the initial auth state
@@ -130,6 +134,29 @@ class AppRouter {
           pageBuilder: (context, state) => const NoTransitionPage(
             child: RoutinesScreen(),
           ),
+        ),
+        // Create form: needs no extra.
+        GoRoute(
+          path: routinesNewPath,
+          name: 'routines-new',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: RoutineEditScreen(),
+          ),
+        ),
+        // Edit form: the Routine must come as extra. Anything else (null,
+        // wrong type) shows an error page; no silent fallback to create and
+        // no redirect (a redirect on push adds a second /home).
+        GoRoute(
+          path: routinesEditPath,
+          name: 'routines-edit',
+          pageBuilder: (context, state) {
+            final extra = state.extra;
+            return NoTransitionPage(
+              child: extra is Routine
+                  ? RoutineEditScreen(key: ValueKey('routine-edit-${extra.id}'), routine: extra)
+                  : const RoutineEditUnavailablePage(),
+            );
+          },
         ),
         GoRoute(
           path: settingsPath,
