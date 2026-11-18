@@ -64,14 +64,17 @@ class RoutinesCard extends ConsumerWidget {
               children: [
                 Icon(Icons.repeat, size: 24, color: theme.colorScheme.primary),
                 const SizedBox(width: 12),
-                Text(
-                  title,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.primary,
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.primary,
+                    ),
                   ),
                 ),
-                const Spacer(),
                 if (counter != null)
                   Text(
                     counter,

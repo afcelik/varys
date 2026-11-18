@@ -2,7 +2,12 @@
 // <= 800px, extended side rail > 800px) draws HomeScreen at several window
 // widths. Data comes from real backend JSON (test/fixtures/), with long,
 // realistic titles so the worst case is drawn: both focus slots filled (both
-// "Temizle" buttons visible), a long say-no text and a long routine title.
+// "Temizle" buttons visible), a long say-no text, long open and done task
+// titles, and long routine titles with visible streaks (one routine done).
+// Every width runs at text scale 1.0 and 1.5. The routines card is also
+// drawn in its empty, loading and error states.
+
+import 'dart:async';
 
 import 'dart:convert';
 import 'dart:io';
@@ -15,6 +20,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:varys/core/errors/error_utils.dart';
+import 'package:varys/core/errors/failure.dart';
 import 'package:varys/core/router/app_router.dart';
 import 'package:varys/core/router/router_provider.dart';
 import 'package:varys/features/home/data/daily_plan_repository.dart';
@@ -52,6 +59,24 @@ const _sideFocusTitle = 'Yeni müşteri sözleşmesinin hukuki incelemesini tama
 const _sayNoText = 'Öğleden önce sosyal medya, e-posta bildirimleri ve plansız toplantılar';
 const _routineTitle = 'Akşam yürüyüşünden sonra yarının planını gözden geçir ve not al';
 
+/// Long routine titles by fixture id. Id 1 is done with streak 3 (fixture);
+/// id 2 is open and gets a two-digit streak (12).
+const _routineTitles = {
+  1: _routineTitle,
+  2: 'Sabah koşusu: sahil boyunca beş kilometre, ardından esneme ve kısa meditasyon',
+  3: 'Elektrik, su, doğalgaz ve internet faturalarını öde, dekontları arşive kaydet',
+  4: 'Balkondaki bütün bitkileri sula, kuruyan yaprakları temizle ve gübre ekle',
+};
+
+/// Long daily task titles by fixture id (1, 2, 4 open; 3, 5 done).
+const _taskTitles = {
+  1: 'Kira sözleşmesi yenilemesi için emlakçıyı ara ve gerekli belgeleri hazırla',
+  2: 'Haftalık ekip toplantısının gündemini hazırla ve katılımcılara e-postayla gönder',
+  3: 'Geçen ayın kredi kartı ekstresini kontrol et ve itiraz edilecek harcamaları işaretle',
+  4: 'Araç muayenesi için randevu al, sigorta poliçesini ve ruhsatı yanına hazırla',
+  5: 'Doktor randevusundaki tahlil sonuçlarını e-Nabız üzerinden indir ve yazdır',
+};
+
 Map<String, dynamic> _readJson(String path) =>
     jsonDecode(File(path).readAsStringSync()) as Map<String, dynamic>;
 
@@ -70,12 +95,7 @@ DailyPlan _worstCasePlan() {
     mainFocus: main,
     sideFocus: side,
     sayNoText: _sayNoText,
-    tasks: [
-      tasks.first.copyWith(
-        title: 'Kira sözleşmesi yenilemesi için emlakçıyı ara ve gerekli belgeleri hazırla',
-      ),
-      ...tasks.skip(1),
-    ],
+    tasks: [for (final t in tasks) t.copyWith(title: _taskTitles[t.id]!)],
   );
 }
 
@@ -109,13 +129,23 @@ DailyPlan _focusPagePlan() {
   );
 }
 
-/// Routines from real backend JSON, the first one with a long title.
+/// Routines from real backend JSON, all with long titles; id 1 is done with
+/// streak 3 (as in the fixture), id 2 is open with streak 12.
 List<RoutineDayItem> _routines() {
   final items = (jsonDecode(File('test/fixtures/routines_day.json').readAsStringSync()) as List)
       .map((e) => RoutineDayItem.fromJson(e as Map<String, dynamic>))
       .toList();
-  return [items.first.copyWith(title: _routineTitle), ...items.skip(1)];
+  return [
+    for (final item in items)
+      item.copyWith(
+        title: _routineTitles[item.id]!,
+        currentStreak: item.id == 2 ? 12 : item.currentStreak,
+      ),
+  ];
 }
+
+const _widths = [360.0, 600.0, 800.0, 801.0, 1000.0, 1200.0, 1400.0, 1800.0];
+const _textScales = [1.0, 1.5];
 
 void main() {
   late _MockDailyPlanRepository planRepo;
@@ -146,7 +176,14 @@ void main() {
   ];
 
   /// Pumps the real app (real router, real MainScaffold) logged in on Home.
-  Future<void> pumpApp(WidgetTester tester, double width, {double textScale = 1.0}) async {
+  /// With [settle] false (a request left pending) pumpAndSettle is not used
+  /// (it could hang); it pumps 100ms steps until Home is drawn (max 3s).
+  Future<void> pumpApp(
+    WidgetTester tester,
+    double width, {
+    double textScale = 1.0,
+    bool settle = true,
+  }) async {
     FlutterSecureStorage.setMockInitialValues({'auth_token': 'a.b.c'});
     tester.view.physicalSize = Size(width, 3000);
     tester.view.devicePixelRatio = 1.0;
@@ -163,7 +200,14 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    if (settle) {
+      await tester.pumpAndSettle();
+    } else {
+      for (var i = 0; i < 30 && find.byType(HomeScreen).evaluate().isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.pump(const Duration(milliseconds: 100));
+    }
   }
 
   /// Asserts the worst case was really drawn inside the real shell layout.
@@ -189,10 +233,45 @@ void main() {
       find.descendant(of: find.byType(SideFocusCard), matching: find.text(_sideFocusTitle)),
       findsOneWidget,
     );
+    expect(find.text(_sayNoText), findsOneWidget);
+    // Long open and done task titles in the daily tasks card.
+    for (final title in _taskTitles.values) {
+      expect(
+        find.descendant(of: find.byType(DailyTasksCard), matching: find.text(title)),
+        findsOneWidget,
+        reason: title,
+      );
+    }
+    // Routines card: every long title, streak icon + number (done id 1 with
+    // 3, open id 2 with 12), the done checkbox ticked, counter and "Daha fazla".
+    Finder inRoutines(Finder f) => find.descendant(of: find.byType(RoutinesCard), matching: f);
+    for (final title in _routineTitles.values) {
+      expect(inRoutines(find.text(title)), findsOneWidget, reason: title);
+    }
+    expect(inRoutines(find.byIcon(Icons.local_fire_department)), findsNWidgets(2));
+    for (final (id, streak) in [(1, '3'), (2, '12')]) {
+      final row = inRoutines(find.byKey(ValueKey('streak-$id')));
+      expect(row, findsOneWidget);
+      expect(
+        find.descendant(of: row, matching: find.byIcon(Icons.local_fire_department)),
+        findsOneWidget,
+      );
+      expect(find.descendant(of: row, matching: find.text(streak)), findsOneWidget);
+    }
+    final doneCheckbox = tester.widget<Checkbox>(
+      find.descendant(
+        of: find.ancestor(of: inRoutines(find.text(_routineTitle)), matching: find.byType(ListTile)),
+        matching: find.byType(Checkbox),
+      ),
+    );
+    expect(doneCheckbox.value, isTrue);
+    // Two separate counters: routines 1 done of 4, daily tasks 2 done of 5.
+    expect(inRoutines(find.text('1/4')), findsOneWidget);
     expect(
-      find.descendant(of: find.byType(RoutinesCard), matching: find.text(_routineTitle)),
+      find.descendant(of: find.byType(DailyTasksCard), matching: find.text('2/5')),
       findsOneWidget,
     );
+    expect(inRoutines(find.text(RoutinesCard.moreText)), findsOneWidget);
     // "Planlamadan ekle" button in the daily tasks header, full 48x48 tap target.
     final addButton = find.descendant(
       of: find.byType(DailyTasksCard),
@@ -206,22 +285,62 @@ void main() {
   }
 
   group('Home has no overflow with the real side rail / bottom bar layout', () {
-    for (final width in [360.0, 600.0, 800.0, 801.0, 1000.0, 1200.0, 1400.0, 1800.0]) {
-      testWidgets('width ${width.toInt()}px', (tester) async {
-        await pumpApp(tester, width);
-        expect(tester.takeException(), isNull);
-        expectWorstCaseDrawn(tester, width);
-      });
+    for (final width in _widths) {
+      for (final textScale in _textScales) {
+        testWidgets('width ${width.toInt()}px, textScale $textScale', (tester) async {
+          await pumpApp(tester, width, textScale: textScale);
+          expect(tester.takeException(), isNull);
+          expectWorstCaseDrawn(tester, width);
+        });
+      }
     }
   });
 
-  group('Home has no overflow with system text scale 1.5', () {
-    for (final width in [1000.0, 1200.0, 1400.0, 1800.0]) {
-      testWidgets('width ${width.toInt()}px, textScale 1.5', (tester) async {
-        await pumpApp(tester, width, textScale: 1.5);
-        expect(tester.takeException(), isNull);
-        expectWorstCaseDrawn(tester, width);
-      });
+  group('Routines card states have no overflow on Home', () {
+    Finder inRoutines(Finder f) => find.descendant(of: find.byType(RoutinesCard), matching: f);
+
+    void expectCardFrame() {
+      expect(inRoutines(find.text(RoutinesCard.title)), findsOneWidget);
+      expect(inRoutines(find.text(RoutinesCard.moreText)), findsOneWidget);
+    }
+
+    for (final width in _widths) {
+      for (final textScale in _textScales) {
+        final label = 'width ${width.toInt()}px, textScale $textScale';
+
+        testWidgets('empty, $label', (tester) async {
+          when(() => routineRepo.getRoutinesForDay(any())).thenAnswer((_) async => const Right([]));
+          await pumpApp(tester, width, textScale: textScale);
+          expect(tester.takeException(), isNull);
+          expectCardFrame();
+          expect(inRoutines(find.text(RoutinesCard.emptyText)), findsOneWidget);
+          expect(inRoutines(find.text('0/0')), findsOneWidget);
+        });
+
+        testWidgets('loading, $label', (tester) async {
+          final pending = Completer<Either<Failure, List<RoutineDayItem>>>();
+          addTearDown(() {
+            if (!pending.isCompleted) pending.complete(const Right([]));
+          });
+          when(() => routineRepo.getRoutinesForDay(any())).thenAnswer((_) => pending.future);
+          await pumpApp(tester, width, textScale: textScale, settle: false);
+          expect(tester.takeException(), isNull);
+          expectCardFrame();
+          expect(inRoutines(find.byKey(const ValueKey('routines-skeleton'))), findsOneWidget);
+          expect(inRoutines(find.textContaining('/')), findsNothing); // no counter yet
+        });
+
+        testWidgets('error, $label', (tester) async {
+          const failure = NetworkFailure('timeout');
+          when(() => routineRepo.getRoutinesForDay(any()))
+              .thenAnswer((_) async => const Left(failure));
+          await pumpApp(tester, width, textScale: textScale);
+          expect(tester.takeException(), isNull);
+          expectCardFrame();
+          expect(inRoutines(find.text(userMessage(failure))), findsOneWidget);
+          expect(inRoutines(find.text(RoutinesCard.retryText)), findsOneWidget);
+        });
+      }
     }
   });
 
@@ -265,8 +384,6 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  // Note: HomeScreen itself overflows at 360px + 1.5x (RoutinesCard header
-  // row, routines_card.dart); that is outside this page and not hidden here.
   group('Focus selection page has no overflow (long titles, every row state)', () {
     for (final width in [360.0, 1400.0]) {
       for (final textScale in [1.0, 1.5]) {
