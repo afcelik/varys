@@ -1,5 +1,6 @@
 import 'package:dartz/dartz.dart' hide Task;
 import 'package:varys/core/errors/failure.dart';
+import 'package:varys/features/home/domain/plan_field.dart';
 import 'package:varys/features/planning/domain/task.dart' show Task, TaskFilter, TaskStatus;
 
 /// Abstract repository interface for Task operations
@@ -16,8 +17,18 @@ abstract class TaskRepository {
   /// Creates a new task
   Future<Either<Failure, Task>> createTask(Task task);
 
-  /// Updates an existing task
-  Future<Either<Failure, Task>> updateTask(Task task);
+  /// Partially updates task [id] (PATCH). Only explicitly given fields are
+  /// sent: `title`/`status` null → not sent; for [PlanField] fields
+  /// unset → key absent, set → value, clear → explicit `null`.
+  /// Dates are sent as `YYYY-MM-DDT00:00:00` (no timezone).
+  Future<Either<Failure, Task>> updateTask(
+    int id, {
+    String? title,
+    PlanField<String> description = const PlanField.unset(),
+    TaskStatus? status,
+    PlanField<DateTime> plannedDate = const PlanField.unset(),
+    PlanField<DateTime> dueDate = const PlanField.unset(),
+  });
 
   /// Deletes a task by ID
   Future<Either<Failure, void>> deleteTask(int id);

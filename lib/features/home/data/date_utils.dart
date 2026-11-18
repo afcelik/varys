@@ -12,6 +12,7 @@ String formatDateForDisplay(DateTime date, {String locale = 'tr_TR'}) {
 }
 
 /// Formats a local calendar day as "YYYY-MM-DDT00:00:00" for API requests.
+/// Used for every task day in request bodies (planned_date AND due_date).
 /// This is a naive datetime (no timezone suffix) representing the start of the day.
 /// The backend filters tasks by date component only (func.date(planned_date)).
 String plannedDateForApi(DateTime localDay) {

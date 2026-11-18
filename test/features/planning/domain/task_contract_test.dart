@@ -1,4 +1,8 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:varys/features/home/data/date_utils.dart';
 import 'package:varys/features/planning/domain/task.dart';
 
 void main() {
@@ -171,6 +175,59 @@ void main() {
       expect(todoTask.isCompleted, isFalse);
       expect(inProgressTask.isCompleted, isFalse);
       expect(doneTask.isCompleted, isTrue);
+    });
+  });
+
+  // Assumption under test: a timezone suffix (Z, +03:00) is read as a
+  // WALL-CLOCK day, NOT as an instant. The backend sends no suffix today;
+  // this is a defensive measure so the day never shifts.
+  group('Task dates keep the calendar day (no timezone conversion)', () {
+    Map<String, dynamic> withDates(String value) => {
+          'id': 1,
+          'title': 'Test Task',
+          'description': null,
+          'status': 'todo',
+          'created_at': '2026-11-17T10:30:00',
+          'updated_at': '2026-11-17T10:30:00',
+          'deleted_at': null,
+          'planned_date': value,
+          'due_date': value,
+        };
+
+    for (final raw in const [
+      '2026-11-17',
+      '2026-11-17T00:00:00',
+      '2026-11-17T00:00:00Z',
+      '2026-11-17T00:00:00+03:00',
+    ]) {
+      test('"$raw" parses to 2026-11-17 for planned_date and due_date', () {
+        final task = Task.fromJson(withDates(raw));
+        for (final d in [task.plannedDate!, task.dueDate!]) {
+          expect(dayOnly(d), DateTime(2026, 11, 17));
+          expect(d.isUtc, isFalse, reason: 'must be naive local, not an instant');
+          expect(d, DateTime(2026, 11, 17));
+        }
+      });
+    }
+
+    test('late-evening suffix values do not roll over to another day', () {
+      final plus = Task.fromJson(withDates('2026-11-17T23:30:00+03:00'));
+      final minus = Task.fromJson(withDates('2026-11-17T01:00:00-05:00'));
+      expect(plus.plannedDate, DateTime(2026, 11, 17, 23, 30));
+      expect(minus.dueDate, DateTime(2026, 11, 17, 1));
+    });
+
+    test('real backend fixture still parses with day-only planned_date', () {
+      final json = jsonDecode(File('test/fixtures/daily_plan_with_tasks.json').readAsStringSync())
+          as Map<String, dynamic>;
+      final tasks = (json['tasks'] as List)
+          .map((t) => Task.fromJson(t as Map<String, dynamic>))
+          .toList();
+      expect(tasks, isNotEmpty);
+      for (final t in tasks) {
+        expect(t.plannedDate, DateTime(2026, 11, 1));
+        expect(t.dueDate, isNull);
+      }
     });
   });
 }

@@ -7,6 +7,7 @@ import 'package:varys/features/planning/data/task_repository_impl.dart';
 import 'package:varys/features/planning/domain/task_repository.dart' show TaskRepository;
 import 'package:varys/features/planning/domain/task.dart' show Task, TaskStatus, TaskFilter;
 import 'package:varys/core/errors/failure.dart';
+import 'package:varys/features/home/domain/plan_field.dart';
 import 'dart:async';
 import 'package:mocktail/mocktail.dart';
 
@@ -243,7 +244,15 @@ class _MockTaskRepository implements TaskRepository {
   Future<Either<Failure, Task>> createTask(Task task) async => throw UnimplementedError();
 
   @override
-  Future<Either<Failure, Task>> updateTask(Task task) async => throw UnimplementedError();
+  Future<Either<Failure, Task>> updateTask(
+    int id, {
+    String? title,
+    PlanField<String> description = const PlanField.unset(),
+    TaskStatus? status,
+    PlanField<DateTime> plannedDate = const PlanField.unset(),
+    PlanField<DateTime> dueDate = const PlanField.unset(),
+  }) async =>
+      throw UnimplementedError();
 
   @override
   Future<Either<Failure, void>> deleteTask(int id) async => throw UnimplementedError();

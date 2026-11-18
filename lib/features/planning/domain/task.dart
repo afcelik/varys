@@ -13,6 +13,36 @@ enum TaskStatus {
   done,
 }
 
+/// JSON converter for task-day fields (`planned_date`, `due_date`).
+///
+/// The backend sends naive datetimes (`YYYY-MM-DDT00:00:00`, no suffix).
+/// Assumption: if a timezone suffix (`Z`, `+03:00`, `-05:00`) ever arrives,
+/// the value is read as a WALL-CLOCK day/time, NOT as an instant: the suffix
+/// is stripped and no UTC/local conversion happens, so the day never shifts.
+/// The backend sends no suffix today; this is a defensive measure.
+class TaskDateConverter implements JsonConverter<DateTime?, String?> {
+  const TaskDateConverter();
+
+  static final _tzSuffix = RegExp(r'(Z|[+-]\d{2}:?\d{2})$', caseSensitive: false);
+
+  @override
+  DateTime? fromJson(String? json) {
+    if (json == null) return null;
+    final raw = json.trim();
+    // Only strip a suffix after the time part ("T..."); a bare
+    // "YYYY-MM-DD" must keep its "-DD".
+    final tIndex = raw.indexOf(RegExp('[Tt ]'));
+    if (tIndex == -1) return DateTime.parse(raw);
+    final time = raw.substring(tIndex + 1).replaceFirst(_tzSuffix, '');
+    return DateTime.parse('${raw.substring(0, tIndex)}T$time');
+  }
+
+  /// Yalnızca model gidiş-dönüşü içindir; istek gövdesinde KULLANMA, tarihler
+  /// için plannedDateForApi kullan.
+  @override
+  String? toJson(DateTime? object) => object?.toIso8601String();
+}
+
 /// Task entity representing a single task in the planning feature.
 @freezed
 abstract class Task with _$Task {
@@ -24,8 +54,8 @@ abstract class Task with _$Task {
     required DateTime createdAt,
     required DateTime updatedAt,
     DateTime? deletedAt,
-    DateTime? plannedDate,
-    DateTime? dueDate,
+    @TaskDateConverter() DateTime? plannedDate,
+    @TaskDateConverter() DateTime? dueDate,
   }) = _Task;
 
   factory Task.fromJson(Map<String, dynamic> json) => _$TaskFromJson(json);

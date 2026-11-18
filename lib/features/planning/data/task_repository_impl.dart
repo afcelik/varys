@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:varys/core/errors/failure.dart';
 import 'package:varys/core/network/api_client.dart';
 import 'package:varys/features/home/data/date_utils.dart';
+import 'package:varys/features/home/domain/plan_field.dart';
 import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/features/planning/domain/task_repository.dart';
 
@@ -81,10 +82,10 @@ class TaskRepositoryImpl implements TaskRepository {
         requestBody['status'] = task.status.name;
       }
       if (task.plannedDate != null) {
-        requestBody['planned_date'] = task.plannedDate!.toIso8601String();
+        requestBody['planned_date'] = plannedDateForApi(task.plannedDate!);
       }
       if (task.dueDate != null) {
-        requestBody['due_date'] = task.dueDate!.toIso8601String();
+        requestBody['due_date'] = plannedDateForApi(task.dueDate!);
       }
 
       final response = await _apiClient.post<Map<String, dynamic>>(
@@ -105,31 +106,25 @@ class TaskRepositoryImpl implements TaskRepository {
   }
 
   @override
-  Future<Either<Failure, Task>> updateTask(Task task) async {
+  Future<Either<Failure, Task>> updateTask(
+    int id, {
+    String? title,
+    PlanField<String> description = const PlanField.unset(),
+    TaskStatus? status,
+    PlanField<DateTime> plannedDate = const PlanField.unset(),
+    PlanField<DateTime> dueDate = const PlanField.unset(),
+  }) async {
     try {
-      // Build request body manually - only include non-null fields that should be updated
-      // Exclude server-generated fields: id, created_at, updated_at, deleted_at
+      // Only explicitly given fields are sent; clear → explicit null.
       final Map<String, dynamic> requestBody = {};
-
-      if (task.title.isNotEmpty) {
-        requestBody['title'] = task.title;
-      }
-      // description can be explicitly set to null to clear it
-      if (task.description != null) {
-        requestBody['description'] = task.description;
-      }
-      if (task.status != TaskStatus.todo) {
-        requestBody['status'] = task.status.name;
-      }
-      if (task.plannedDate != null) {
-        requestBody['planned_date'] = task.plannedDate!.toIso8601String();
-      }
-      if (task.dueDate != null) {
-        requestBody['due_date'] = task.dueDate!.toIso8601String();
-      }
+      if (title != null) requestBody['title'] = title;
+      description.writeTo(requestBody, 'description');
+      if (status != null) requestBody['status'] = status.name;
+      _writeDay(requestBody, 'planned_date', plannedDate);
+      _writeDay(requestBody, 'due_date', dueDate);
 
       final response = await _apiClient.patch<Map<String, dynamic>>(
-        '$_basePath/${task.id}',
+        '$_basePath/$id',
         data: requestBody,
       );
       final updatedTask = Task.fromJson(response.data!);
@@ -197,6 +192,19 @@ class TaskRepositoryImpl implements TaskRepository {
         debugPrint('Stack trace: $stackTrace');
       }
       return Left(UnknownFailure(e.toString()));
+    }
+  }
+
+  /// Writes a task-day field: set → `YYYY-MM-DDT00:00:00`, clear → explicit
+  /// `null`, unset → key absent.
+  static void _writeDay(Map<String, dynamic> body, String key, PlanField<DateTime> field) {
+    switch (field) {
+      case PlanFieldUnset<DateTime>():
+        break;
+      case PlanFieldSet<DateTime>(:final value):
+        body[key] = plannedDateForApi(value);
+      case PlanFieldClear<DateTime>():
+        body[key] = null;
     }
   }
 
