@@ -230,4 +230,72 @@ void main() {
       }
     });
   });
+
+  // GET /tasks now carries project_id (int or null); fixture from the real
+  // backend (test/fixtures/tasks_with_project.json).
+  group('Task project_id (real backend GET /tasks)', () {
+    late List<Task> tasks;
+    late List<Map<String, dynamic>> raw;
+
+    setUpAll(() {
+      raw = (jsonDecode(File('test/fixtures/tasks_with_project.json').readAsStringSync()) as List)
+          .cast<Map<String, dynamic>>();
+      tasks = raw.map(Task.fromJson).toList();
+    });
+
+    test('every task in the real response carries the project_id key', () {
+      expect(raw, isNotEmpty);
+      for (final json in raw) {
+        expect(json.containsKey('project_id'), isTrue, reason: 'task ${json['id']}');
+      }
+    });
+
+    test('linked task parses projectId; unlinked task parses null', () {
+      final linked = tasks.firstWhere((t) => t.id == 2);
+      expect(linked.title, 'Kutuları topla');
+      expect(linked.projectId, 1);
+      expect(linked.status, TaskStatus.todo);
+
+      final unlinked = tasks.firstWhere((t) => t.id == 7);
+      expect(unlinked.title, 'Projesiz görev');
+      expect(unlinked.projectId, isNull);
+      expect(unlinked.dueDate, DateTime(2026, 11, 25));
+    });
+
+    test('projectId matches the raw project_id for every task', () {
+      for (var i = 0; i < raw.length; i++) {
+        expect(tasks[i].projectId, raw[i]['project_id'], reason: 'task ${raw[i]['id']}');
+      }
+      expect(tasks.where((t) => t.projectId != null).map((t) => t.projectId).toSet(), {1, 5});
+    });
+
+    test('round-trip toJson -> fromJson keeps a set projectId', () {
+      final linked = tasks.firstWhere((t) => t.id == 1);
+      expect(linked.projectId, 1);
+      final json = linked.toJson();
+      expect(json['project_id'], 1);
+      final back = Task.fromJson(json);
+      expect(back, linked);
+      expect(back.projectId, 1);
+    });
+
+    test('round-trip toJson -> fromJson keeps a null projectId as explicit null', () {
+      final unlinked = tasks.firstWhere((t) => t.id == 7);
+      final json = unlinked.toJson();
+      expect(json.containsKey('project_id'), isTrue);
+      expect(json['project_id'], isNull);
+      final back = Task.fromJson(json);
+      expect(back, unlinked);
+      expect(back.projectId, isNull);
+    });
+
+    test('older payload without the project_id key parses projectId as null', () {
+      // daily_plan_with_tasks.json predates project_id (see report note).
+      final json = jsonDecode(File('test/fixtures/daily_plan_with_tasks.json').readAsStringSync())
+          as Map<String, dynamic>;
+      final first = (json['tasks'] as List).first as Map<String, dynamic>;
+      expect(first.containsKey('project_id'), isFalse);
+      expect(Task.fromJson(first).projectId, isNull);
+    });
+  });
 }

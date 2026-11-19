@@ -1,6 +1,6 @@
 // Session end (expiry or deliberate logout) invalidates every user-data
-// provider: after the next login routines, daily plan and task list are
-// fetched again and no old data or old error state is shown.
+// provider: after the next login routines, daily plan, task list and active
+// projects are fetched again and no old data or old error state is shown.
 
 import 'dart:convert';
 import 'dart:io';
@@ -21,6 +21,10 @@ import 'package:varys/features/planning/data/task_repository_impl.dart';
 import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/features/planning/domain/task_repository.dart';
 import 'package:varys/features/planning/presentation/task_notifier.dart';
+import 'package:varys/features/projects/data/project_repository_impl.dart';
+import 'package:varys/features/projects/domain/project.dart';
+import 'package:varys/features/projects/domain/project_repository.dart';
+import 'package:varys/features/projects/presentation/active_projects_notifier.dart';
 import 'package:varys/features/routines/data/routine_repository_impl.dart';
 import 'package:varys/features/routines/domain/routine.dart';
 import 'package:varys/features/routines/domain/routine_repository.dart';
@@ -32,6 +36,8 @@ class _MockDailyPlanRepository extends Mock implements DailyPlanRepository {}
 class _MockTaskRepository extends Mock implements TaskRepository {}
 
 class _MockRoutineRepository extends Mock implements RoutineRepository {}
+
+class _MockProjectRepository extends Mock implements ProjectRepository {}
 
 const _token = 'old.jwt.token';
 const _newToken = 'new.jwt.token';
@@ -55,15 +61,19 @@ void main() {
   late List<RoutineDayItem> routines;
   late List<Routine> routineList;
   late List<Task> tasks;
+  late List<Project> activeProjects;
+  late ProjectLimits limits;
   late _MockDailyPlanRepository planRepo;
   late _MockTaskRepository taskRepo;
   late _MockRoutineRepository routineRepo;
+  late _MockProjectRepository projectRepo;
   late ProviderContainer container;
   late AuthNotifier auth;
 
   setUpAll(() {
     registerFallbackValue(DateTime(2000));
     registerFallbackValue(TaskFilter.all);
+    registerFallbackValue(ProjectStatus.active);
     routines = (jsonDecode(File('test/fixtures/routines_day.json').readAsStringSync()) as List)
         .map((e) => RoutineDayItem.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -73,6 +83,13 @@ void main() {
     final planJson = jsonDecode(File('test/fixtures/daily_plan_with_tasks.json').readAsStringSync())
         as Map<String, dynamic>;
     tasks = (planJson['tasks'] as List).map((t) => Task.fromJson(t as Map<String, dynamic>)).toList();
+    activeProjects = (jsonDecode(File('test/fixtures/projects_list.json').readAsStringSync()) as List)
+        .map((e) => Project.fromJson(e as Map<String, dynamic>))
+        .where((p) => p.status == ProjectStatus.active)
+        .toList();
+    limits = ProjectLimits.fromJson(
+        jsonDecode(File('test/fixtures/projects_limits.json').readAsStringSync())
+            as Map<String, dynamic>);
   });
 
   setUp(() async {
@@ -80,6 +97,7 @@ void main() {
     planRepo = _MockDailyPlanRepository();
     taskRepo = _MockTaskRepository();
     routineRepo = _MockRoutineRepository();
+    projectRepo = _MockProjectRepository();
 
     // Session 1: old user data; routines fail (old error state).
     when(() => planRepo.getPlan(any()))
@@ -87,12 +105,17 @@ void main() {
     when(() => taskRepo.getTasksByFilter(any())).thenAnswer((_) async => Right([tasks.first]));
     when(() => routineRepo.getRoutinesForDay(any())).thenAnswer((_) async => const Left(_failure));
     when(() => routineRepo.getRoutines()).thenAnswer((_) async => Right([routineList.first]));
+    // Old projects: active list fails (old error state), limits still load.
+    when(() => projectRepo.getProjects(status: any(named: 'status')))
+        .thenAnswer((_) async => const Left(_failure));
+    when(() => projectRepo.getLimits()).thenAnswer((_) async => Right(limits));
 
     container = ProviderContainer(overrides: [
       todayProvider.overrideWith(_FixedToday.new),
       dailyPlanRepositoryProvider.overrideWith((ref) async => planRepo),
       taskRepositoryProvider.overrideWith((ref) async => taskRepo),
       routineRepositoryProvider.overrideWith((ref) async => routineRepo),
+      projectRepositoryProvider.overrideWith((ref) async => projectRepo),
     ]);
     auth = container.read(authNotifierProvider.notifier);
     await _flush();
@@ -103,6 +126,7 @@ void main() {
     container.listen(taskListNotifierProvider, (_, _) {});
     container.listen(routinesForDayProvider(_day), (_, _) {});
     container.listen(routinesListProvider, (_, _) {}); // open /routines page
+    container.listen(activeProjectsProvider, (_, _) {}); // Home projects card
     await _flush();
 
     expect(container.read(dailyPlanProvider).requireValue.tasks, [tasks.first]);
@@ -110,6 +134,7 @@ void main() {
         [tasks.first]);
     expect(container.read(routinesForDayProvider(_day)).hasError, isTrue);
     expect(container.read(routinesListProvider).requireValue, [routineList.first]);
+    expect(container.read(activeProjectsProvider).error, _failure);
   });
 
   tearDown(() => container.dispose());
@@ -121,6 +146,8 @@ void main() {
     when(() => taskRepo.getTasksByFilter(any())).thenAnswer((_) async => Right(tasks));
     when(() => routineRepo.getRoutinesForDay(any())).thenAnswer((_) async => Right(routines));
     when(() => routineRepo.getRoutines()).thenAnswer((_) async => Right(routineList));
+    when(() => projectRepo.getProjects(status: any(named: 'status')))
+        .thenAnswer((_) async => Right(activeProjects));
     await auth.updateToken(_newToken);
     await _flush();
   }
@@ -133,11 +160,17 @@ void main() {
     expect(routineValue.requireValue, routines);
     expect(container.read(routinesListProvider).requireValue, routineList,
         reason: 'old routine list must be gone');
+    final projectsValue = container.read(activeProjectsProvider);
+    expect(projectsValue.hasError, isFalse, reason: 'old project error state must be gone');
+    expect(projectsValue.requireValue.projects, activeProjects);
+    expect(projectsValue.requireValue.activeCount, 2);
 
     verify(() => planRepo.getPlan(_day)).called(2);
     verify(() => taskRepo.getTasksByFilter(TaskFilter.all)).called(2);
     verify(() => routineRepo.getRoutinesForDay(_day)).called(2);
     verify(() => routineRepo.getRoutines()).called(2);
+    verify(() => projectRepo.getProjects(status: ProjectStatus.active)).called(2);
+    verify(() => projectRepo.getLimits()).called(2);
   }
 
   test('session expiry invalidates routines, daily plan and tasks; re-login reloads them',
@@ -171,8 +204,10 @@ void main() {
       dailyPlanRepositoryProvider,
       taskListNotifierProvider,
       taskRepositoryProvider,
+      activeProjectsProvider,
+      projectRepositoryProvider,
     });
-    expect(userData, hasLength(7));
+    expect(userData, hasLength(9));
 
     final infra = <ProviderOrFamily>[];
     AuthNotifier.invalidateSessionInfra(infra.add);
@@ -186,5 +221,6 @@ void main() {
     expect(container.read(routinesForDayProvider(_day)).hasError, isTrue);
     expect(container.read(routinesListProvider).requireValue, [routineList.first]);
     expect(container.read(dailyPlanProvider).requireValue.tasks, [tasks.first]);
+    expect(container.read(activeProjectsProvider).hasError, isTrue);
   });
 }

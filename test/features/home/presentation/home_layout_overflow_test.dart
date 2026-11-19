@@ -6,7 +6,10 @@
 // titles, and long routine titles with visible streaks (one routine done).
 // Every width runs at text scale 1.0 and 1.5. Home is also drawn with both
 // focus slots empty, with everything empty, and with the plan in its error
-// and loading states; the routines card in its empty, loading and error states.
+// and loading states; the routines card in its empty, loading and error states;
+// the projects card filled (long titles, progress null/0/100, target date set
+// and null), empty, loading and error. The /projects skeleton page is drawn
+// at 360px with text scale 1.0 and 1.5.
 
 import 'dart:async';
 
@@ -34,12 +37,17 @@ import 'package:varys/features/home/presentation/widgets/daily_plan_state_widget
 import 'package:varys/features/home/presentation/widgets/daily_tasks_card.dart';
 import 'package:varys/features/home/presentation/widgets/focus_cards.dart';
 import 'package:varys/features/home/presentation/widgets/inbox_card.dart';
+import 'package:varys/features/home/presentation/widgets/projects_card.dart';
 import 'package:varys/features/home/presentation/widgets/random_note_card.dart';
 import 'package:varys/features/home/presentation/widgets/routines_card.dart';
 import 'package:varys/features/home/presentation/widgets/say_no_card.dart';
 import 'package:varys/features/planning/data/task_repository_impl.dart';
 import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/features/planning/domain/task_repository.dart';
+import 'package:varys/features/projects/data/project_repository_impl.dart';
+import 'package:varys/features/projects/domain/project.dart';
+import 'package:varys/features/projects/domain/project_repository.dart';
+import 'package:varys/features/projects/presentation/projects_screen.dart';
 import 'package:varys/features/routines/data/routine_repository_impl.dart';
 import 'package:varys/features/routines/domain/routine.dart';
 
@@ -51,6 +59,8 @@ class _MockDailyPlanRepository extends Mock implements DailyPlanRepository {}
 class _MockTaskRepository extends Mock implements TaskRepository {}
 
 class _MockRoutineRepository extends Mock implements RoutineRepository {}
+
+class _MockProjectRepository extends Mock implements ProjectRepository {}
 
 final _day = DateTime(2026, 11, 1);
 
@@ -150,6 +160,37 @@ List<RoutineDayItem> _routines() {
   ];
 }
 
+/// Long project titles; each wraps to (and is cut at) two lines at 360px.
+const _projectTitleNull =
+    'Kitap okuma listesi: yılın klasiklerini, birikmiş romanları ve iş kitaplarını bitir';
+const _projectTitleZero =
+    'Ev taşıma: nakliye, kutular, adres değişikliği, abonelikler ve yeni evin temizliği';
+const _projectTitleFull =
+    'Vergi beyannamesi: belgeleri topla, giderleri ayıkla, beyannameyi hazırla ve gönder';
+
+/// Worst case for the projects card, from real backend JSON
+/// (test/fixtures/projects_list.json): three active projects (the limit),
+/// long titles, every progress state at once and target date set and null.
+///   2 -> no tasks, progress null, no target date ("Henüz görev yok", no bar)
+///   1 -> 0 of 4 done, progress 0, target 2026-11-20 (empty bar, "%0")
+///   5 -> 2 of 2 done, progress 100, target 2026-10-31 (full bar, "%100")
+List<Project> _worstCaseProjects() {
+  final all = (jsonDecode(File('test/fixtures/projects_list.json').readAsStringSync()) as List)
+      .map((e) => Project.fromJson(e as Map<String, dynamic>))
+      .toList();
+  Project byId(int id) => all.firstWhere((p) => p.id == id);
+  return [
+    byId(2).copyWith(title: _projectTitleNull),
+    byId(1).copyWith(title: _projectTitleZero, doneTasks: 0, progressPercent: 0),
+    byId(5).copyWith(title: _projectTitleFull, status: ProjectStatus.active),
+  ];
+}
+
+ProjectLimits _limits() => ProjectLimits.fromJson(
+      jsonDecode(File('test/fixtures/projects_limits.json').readAsStringSync())
+          as Map<String, dynamic>,
+    );
+
 /// Worst case with both focus slots empty; every other card stays filled.
 DailyPlan _focusesEmptyPlan() => _worstCasePlan().copyWith(mainFocus: null, sideFocus: null);
 
@@ -171,21 +212,28 @@ void main() {
   late _MockDailyPlanRepository planRepo;
   late _MockTaskRepository taskRepo;
   late _MockRoutineRepository routineRepo;
+  late _MockProjectRepository projectRepo;
 
   setUpAll(() async {
     await initializeDateFormatting('tr_TR', null);
     registerFallbackValue(DateTime(2000));
     registerFallbackValue(TaskFilter.all);
+    registerFallbackValue(ProjectStatus.active);
   });
 
   setUp(() {
     planRepo = _MockDailyPlanRepository();
     taskRepo = _MockTaskRepository();
     routineRepo = _MockRoutineRepository();
+    projectRepo = _MockProjectRepository();
     final plan = _worstCasePlan();
     when(() => planRepo.getPlan(any())).thenAnswer((_) async => Right(plan));
     when(() => taskRepo.getTasksByFilter(any())).thenAnswer((_) async => Right(plan.tasks));
     when(() => routineRepo.getRoutinesForDay(any())).thenAnswer((_) async => Right(_routines()));
+    when(() => projectRepo.getProjects(status: any(named: 'status')))
+        .thenAnswer((_) async => Right(_worstCaseProjects()));
+    when(() => projectRepo.getLimits())
+        .thenAnswer((_) async => Right(_limits().copyWith(activeCount: 3)));
   });
 
   List<Override> overrides() => [
@@ -193,6 +241,7 @@ void main() {
     dailyPlanRepositoryProvider.overrideWith((ref) async => planRepo),
     taskRepositoryProvider.overrideWith((ref) async => taskRepo),
     routineRepositoryProvider.overrideWith((ref) async => routineRepo),
+    projectRepositoryProvider.overrideWith((ref) async => projectRepo),
   ];
 
   /// Pumps the real app (real router, real MainScaffold) logged in on Home.
@@ -348,6 +397,7 @@ void main() {
       SayNoCard,
       DailyTasksCard,
       RoutinesCard,
+      ProjectsCard,
       RandomNoteCard,
       InboxCard,
     ]) {
@@ -526,6 +576,168 @@ void main() {
           expect(inRoutines(find.text(RoutinesCard.retryText)), findsOneWidget);
         });
       }
+    }
+  });
+
+  /// The whole button (incl. Material tap padding) is at least 48x48.
+  void expectTapTarget(WidgetTester tester, Finder button, String label) {
+    expect(button, findsOneWidget, reason: label);
+    final size = tester.getSize(button);
+    expect(size.width, greaterThanOrEqualTo(48), reason: label);
+    expect(size.height, greaterThanOrEqualTo(48), reason: label);
+  }
+
+  group('Projects card states have no overflow on Home', () {
+    Finder inProjects(Finder f) => find.descendant(of: find.byType(ProjectsCard), matching: f);
+    Finder projectRow(int id) => inProjects(find.byKey(ValueKey('project-$id')));
+    Finder inRow(int id, Finder f) => find.descendant(of: projectRow(id), matching: f);
+
+    void expectCardFrame(WidgetTester tester, double width) {
+      expectShell(width);
+      expect(inProjects(find.text(ProjectsCard.title)), findsOneWidget);
+      final more = find.ancestor(
+        of: inProjects(find.text(ProjectsCard.moreText)),
+        matching: find.byType(TextButton),
+      );
+      expectTapTarget(tester, more, ProjectsCard.moreText);
+      final card = tester.getRect(find.byType(ProjectsCard));
+      expect(card.left, greaterThanOrEqualTo(0));
+      expect(card.right, lessThanOrEqualTo(width));
+    }
+
+    /// Title on its own line; the bar (or "Henüz görev yok") sits fully below it.
+    void expectBelowTitle(WidgetTester tester, int id, String title, Finder below) {
+      final titleRect = tester.getRect(inRow(id, find.text(title)));
+      final belowRect = tester.getRect(below);
+      expect(belowRect.top, greaterThanOrEqualTo(titleRect.bottom), reason: '$id');
+      final rowRect = tester.getRect(projectRow(id));
+      expect(belowRect.right, lessThanOrEqualTo(rowRect.right), reason: '$id');
+      expect(titleRect.right, lessThanOrEqualTo(rowRect.right), reason: '$id');
+    }
+
+    LinearProgressIndicator bar(WidgetTester tester, int id) =>
+        tester.widget<LinearProgressIndicator>(inRow(id, find.byType(LinearProgressIndicator)));
+
+    for (final width in _widths) {
+      for (final textScale in _textScales) {
+        final label = 'width ${width.toInt()}px, textScale $textScale';
+
+        testWidgets('filled (long titles, progress null/0/100), $label', (tester) async {
+          await pumpApp(tester, width, textScale: textScale);
+          expect(tester.takeException(), isNull);
+          expectCardFrame(tester, width);
+          expect(inProjects(find.text(ProjectsCard.counterText(3, 3))), findsOneWidget);
+          for (final (id, title) in [
+            (2, _projectTitleNull),
+            (1, _projectTitleZero),
+            (5, _projectTitleFull),
+          ]) {
+            expect(inRow(id, find.text(title)), findsOneWidget, reason: title);
+          }
+
+          // progress null: "Henüz görev yok", no bar, no percent.
+          final noTasks = inRow(2, find.text(ProjectsCard.noTasksText));
+          expect(noTasks, findsOneWidget);
+          expect(inRow(2, find.byType(LinearProgressIndicator)), findsNothing);
+          expect(inRow(2, find.textContaining('%')), findsNothing);
+          expectBelowTitle(tester, 2, _projectTitleNull, noTasks);
+
+          // progress 0: empty bar and "%0".
+          expect(bar(tester, 1).value, 0);
+          expect(inRow(1, find.text('%0')), findsOneWidget);
+          expect(inRow(1, find.text(ProjectsCard.noTasksText)), findsNothing);
+          expectBelowTitle(
+              tester, 1, _projectTitleZero, inRow(1, find.byKey(const ValueKey('project-progress-1'))));
+
+          // progress 100: full bar and "%100".
+          expect(bar(tester, 5).value, 1.0);
+          expect(inRow(5, find.text('%100')), findsOneWidget);
+          expectBelowTitle(
+              tester, 5, _projectTitleFull, inRow(5, find.byKey(const ValueKey('project-progress-5'))));
+
+          // Target date set (short Turkish day) and null.
+          expect(inRow(1, find.text('20 Kas')), findsOneWidget);
+          expect(inRow(5, find.text('31 Eki')), findsOneWidget);
+          expect(inRow(2, find.byKey(const ValueKey('project-target-2'))), findsNothing);
+        });
+
+        testWidgets('empty, $label', (tester) async {
+          when(() => projectRepo.getProjects(status: any(named: 'status')))
+              .thenAnswer((_) async => const Right([]));
+          when(() => projectRepo.getLimits())
+              .thenAnswer((_) async => Right(_limits().copyWith(activeCount: 0)));
+          await pumpApp(tester, width, textScale: textScale);
+          expect(tester.takeException(), isNull);
+          expectCardFrame(tester, width);
+          expect(inProjects(find.text(ProjectsCard.emptyText)), findsOneWidget);
+          expect(inProjects(find.text(ProjectsCard.counterText(0, 3))), findsOneWidget);
+        });
+
+        testWidgets('loading, $label', (tester) async {
+          final pending = Completer<Either<Failure, List<Project>>>();
+          addTearDown(() {
+            if (!pending.isCompleted) pending.complete(const Right([]));
+          });
+          when(() => projectRepo.getProjects(status: any(named: 'status')))
+              .thenAnswer((_) => pending.future);
+          await pumpApp(tester, width, textScale: textScale, settle: false);
+          // Let the shell (side rail) finish animating; the request stays pending.
+          await tester.pump(const Duration(seconds: 1));
+          expect(tester.takeException(), isNull);
+          expectCardFrame(tester, width);
+          expect(inProjects(find.byKey(const ValueKey('projects-skeleton'))), findsOneWidget);
+          expect(inProjects(find.textContaining(RegExp(r'^Aktif \d+/\d+$'))), findsNothing); // no counter yet
+        });
+
+        testWidgets('error, $label', (tester) async {
+          const failure = NetworkFailure('timeout');
+          when(() => projectRepo.getProjects(status: any(named: 'status')))
+              .thenAnswer((_) async => const Left(failure));
+          await pumpApp(tester, width, textScale: textScale);
+          expect(tester.takeException(), isNull);
+          expectCardFrame(tester, width);
+          expect(inProjects(find.text(userMessage(failure))), findsOneWidget);
+          final retry = find.ancestor(
+            of: inProjects(find.text(ProjectsCard.retryText)),
+            matching: find.byType(OutlinedButton),
+          );
+          expectTapTarget(tester, retry, ProjectsCard.retryText);
+          // The rest of Home still works.
+          expect(find.byType(RoutinesCard), findsOneWidget);
+          expect(find.text(_routineTitle), findsOneWidget);
+        });
+      }
+    }
+  });
+
+  group('/projects skeleton page has no overflow', () {
+    for (final textScale in _textScales) {
+      testWidgets('width 360px, textScale $textScale (opened from the Home card)', (tester) async {
+        await pumpApp(tester, 360, textScale: textScale);
+        final more = find.descendant(
+          of: find.byType(ProjectsCard),
+          matching: find.text(ProjectsCard.moreText),
+        );
+        await tester.ensureVisible(more);
+        await tester.pumpAndSettle();
+        await tester.tap(more);
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.byType(ProjectsScreen), findsOneWidget);
+        expect(find.byType(NavigationBar), findsNothing, reason: 'outside the shell');
+        expect(find.text(ProjectsScreen.title), findsOneWidget);
+        final text = find.text(ProjectsScreen.placeholderText);
+        expect(text, findsOneWidget);
+        final rect = tester.getRect(text);
+        expect(rect.left, greaterThanOrEqualTo(0));
+        expect(rect.right, lessThanOrEqualTo(360));
+        expectTapTarget(
+          tester,
+          find.ancestor(of: find.byIcon(Icons.arrow_back), matching: find.byType(IconButton)),
+          'BackArrow',
+        );
+      });
     }
   });
 

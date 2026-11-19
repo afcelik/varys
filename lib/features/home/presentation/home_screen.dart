@@ -12,6 +12,7 @@ import 'package:varys/features/home/presentation/widgets/daily_plan_state_widget
 import 'package:varys/features/home/presentation/widgets/inbox_card.dart';
 import 'package:varys/features/home/presentation/widgets/random_note_card.dart';
 import 'package:varys/features/home/presentation/widgets/daily_tasks_card.dart';
+import 'package:varys/features/home/presentation/widgets/projects_card.dart';
 import 'package:varys/features/home/presentation/widgets/routines_card.dart';
 
 /// Home screen - main dashboard view with "Today" mode
@@ -95,6 +96,8 @@ class HomeScreen extends ConsumerWidget {
                   DailyTasksCard(plan: plan),
                   const SizedBox(height: 12),
                   const RoutinesCard(),
+                  const SizedBox(height: 12),
+                  const ProjectsCard(),
                 ],
               ),
             ),
@@ -126,6 +129,8 @@ class HomeScreen extends ConsumerWidget {
         DailyTasksCard(plan: plan),
         const SizedBox(height: 12),
         const RoutinesCard(),
+        const SizedBox(height: 12),
+        const ProjectsCard(),
         const SizedBox(height: 24),
         _buildPlaceholderCards(context, theme),
       ],

@@ -11,6 +11,7 @@ import 'package:varys/features/home/presentation/focus_task_selection_page.dart'
 import 'package:varys/features/inbox/presentation/inbox_screen.dart';
 import 'package:varys/features/notes/presentation/notes_screen.dart';
 import 'package:varys/features/planning/presentation/planning_screen.dart';
+import 'package:varys/features/projects/presentation/projects_screen.dart';
 import 'package:varys/features/routines/domain/routine.dart';
 import 'package:varys/features/routines/presentation/routine_edit_screen.dart';
 import 'package:varys/features/routines/presentation/routines_screen.dart';
@@ -39,6 +40,7 @@ class AppRouter {
   static const String routinesPath = '/routines';
   static const String routinesNewPath = '/routines/new';
   static const String routinesEditPath = '/routines/edit';
+  static const String projectsPath = '/projects';
 
   /// Router error page (unknown path) texts.
   static const String errorTitle = 'Sayfa bulunamadı';
@@ -140,6 +142,14 @@ class AppRouter {
           name: 'routines',
           pageBuilder: (context, state) => const NoTransitionPage(
             child: RoutinesScreen(),
+          ),
+        ),
+        // Projects page (skeleton for now): opened by push from the Home card.
+        GoRoute(
+          path: projectsPath,
+          name: 'projects',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: ProjectsScreen(),
           ),
         ),
         // Create form: needs no extra.

@@ -56,6 +56,8 @@ abstract class Task with _$Task {
     DateTime? deletedAt,
     @TaskDateConverter() DateTime? plannedDate,
     @TaskDateConverter() DateTime? dueDate,
+    /// Linked project (`project_id`); null when the task has no project.
+    int? projectId,
   }) = _Task;
 
   factory Task.fromJson(Map<String, dynamic> json) => _$TaskFromJson(json);
