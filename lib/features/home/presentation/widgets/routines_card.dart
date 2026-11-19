@@ -140,10 +140,18 @@ class _RoutineRowState extends ConsumerState<_RoutineRow> {
       child: ListTile(
         contentPadding: EdgeInsets.zero,
         dense: true,
-        leading: Checkbox(
-          value: item.completed,
-          onChanged: pending ? null : (_) => _toggle(),
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        // Standard density on every platform: a compact (desktop) dense tile
+        // caps leading at 40px high, which would shrink the 48x48 target.
+        visualDensity: VisualDensity.standard,
+        // Fixed 48x48 tap target around the checkbox (drawn centered).
+        leading: SizedBox(
+          width: 48,
+          height: 48,
+          child: Checkbox(
+            value: item.completed,
+            onChanged: pending ? null : (_) => _toggle(),
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
         ),
         title: Text(
           item.title,

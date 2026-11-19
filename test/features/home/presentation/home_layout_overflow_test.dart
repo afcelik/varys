@@ -54,6 +54,9 @@ import 'package:varys/features/routines/domain/routine.dart';
 
 import '../../../helpers/varys_app_harness.dart';
 import 'package:varys/features/routines/domain/routine_repository.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:varys/core/router/router_provider.dart';
+import 'package:varys/core/theme/app_theme.dart';
 
 class _MockDailyPlanRepository extends Mock implements DailyPlanRepository {}
 
@@ -253,6 +256,7 @@ void main() {
     registerFallbackValue(DateTime(2000));
     registerFallbackValue(TaskFilter.all);
     registerFallbackValue(ProjectStatus.active);
+    registerFallbackValue(TaskStatus.todo);
   });
 
   setUp(() {
@@ -940,4 +944,183 @@ void main() {
       }
     }
   });
+
+  /// Same app as [pumpApp] (real routerProvider, real MainScaffold, dark theme,
+  /// forced tr locale + delegates as in VarysApp) but the theme uses
+  /// VisualDensity.compact, the desktop (macOS/Linux) default. No platform
+  /// override: only the density changes.
+  Future<void> pumpCompactApp(WidgetTester tester, double width, double textScale) async {
+    FlutterSecureStorage.setMockInitialValues({'auth_token': 'a.b.c'});
+    tester.view.physicalSize = Size(width, 3000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    if (textScale != 1.0) {
+      tester.platformDispatcher.textScaleFactorTestValue = textScale;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    }
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: overrides(),
+        child: Consumer(
+          builder: (context, ref, _) => MaterialApp.router(
+            theme: AppTheme.darkTheme.copyWith(visualDensity: VisualDensity.compact),
+            locale: const Locale('tr'),
+            supportedLocales: const [Locale('tr')],
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            routerConfig: ref.watch(routerProvider),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  /// Step 29 clamp fixtures: short / unbroken 255 / many-word titles in both
+  /// cards; routine 1 done with streak 3.
+  void useClampFixtures() {
+    final plan = _clampPlan();
+    when(() => planRepo.getPlan(any())).thenAnswer((_) async => Right(plan));
+    when(() => taskRepo.getTasksByFilter(any())).thenAnswer((_) async => Right(plan.tasks));
+    when(
+      () => routineRepo.getRoutinesForDay(any()),
+    ).thenAnswer((_) async => Right(_clampRoutines()));
+  }
+
+  /// Checkbox of the row whose title is [title] inside [card].
+  Finder checkboxOf(Type card, String title) => find.descendant(
+    of: find.ancestor(
+      of: find.descendant(of: find.byType(card), matching: find.text(title)),
+      matching: find.byType(ListTile),
+    ),
+    matching: find.byType(Checkbox),
+  );
+
+  for (final compact in [false, true]) {
+    final density = compact ? 'compact' : 'standard';
+
+    Future<void> pumpWith(WidgetTester tester, double width, double textScale) => compact
+        ? pumpCompactApp(tester, width, textScale)
+        : pumpApp(tester, width, textScale: textScale);
+
+    group('Home checkbox tap targets are 48x48 ($density density)', () {
+      for (final width in _widths) {
+        for (final textScale in _textScales) {
+          final label = '$density, width ${width.toInt()}px, textScale $textScale';
+
+          testWidgets('task and routine checkboxes, $label', (tester) async {
+            useClampFixtures();
+            await pumpWith(tester, width, textScale);
+            expect(tester.takeException(), isNull, reason: label);
+            expect(find.byType(HomeScreen), findsOneWidget);
+
+            for (final card in [DailyTasksCard, RoutinesCard]) {
+              final what = '$label $card';
+              final cardRect = tester.getRect(find.byType(card));
+              final boxes = find.descendant(of: find.byType(card), matching: find.byType(Checkbox));
+              // Tasks 1-5 / routines 1-4 are all drawn with a checkbox.
+              expect(boxes, findsNWidgets(card == DailyTasksCard ? 5 : 4), reason: what);
+              for (final element in boxes.evaluate()) {
+                final box = find.byElementPredicate((e) => e == element);
+                final rect = tester.getRect(box);
+                expect(rect.width, greaterThanOrEqualTo(48), reason: '$what checkbox width');
+                expect(rect.height, greaterThanOrEqualTo(48), reason: '$what checkbox height');
+                final row = tester.getRect(find.ancestor(of: box, matching: find.byType(ListTile)));
+                expect(row.height, greaterThanOrEqualTo(48), reason: '$what row height');
+                expect(rect.top, greaterThanOrEqualTo(row.top - 0.5), reason: '$what in row');
+                expect(rect.bottom, lessThanOrEqualTo(row.bottom + 0.5), reason: '$what in row');
+                expect(rect.left, greaterThanOrEqualTo(cardRect.left), reason: '$what in card');
+                expect(rect.right, lessThanOrEqualTo(cardRect.right), reason: '$what in card');
+              }
+
+              Finder titleIn(String text) =>
+                  find.descendant(of: find.byType(card), matching: find.text(text));
+              expect(
+                drawnLines(tester, titleIn(_shortTitle)),
+                inInclusiveRange(1, 2),
+                reason: '$what short title lines',
+              );
+              for (final text in [_unbrokenTitle, _manyWordsTitle]) {
+                final title = titleIn(text);
+                final kind = text == _unbrokenTitle ? 'unbroken' : 'many words';
+                expect(drawnLines(tester, title), 2, reason: '$what $kind drawn lines');
+                final paragraph = tester.renderObject<RenderParagraph>(title);
+                expect(paragraph.didExceedMaxLines, isTrue, reason: '$what $kind was cut');
+                final r = tester.getRect(title);
+                expect(r.right, lessThanOrEqualTo(cardRect.right), reason: '$what $kind right');
+              }
+            }
+
+            // Routine 1 (done) keeps its streak icon and count, inside the
+            // card and right of its title.
+            final cardRect = tester.getRect(find.byType(RoutinesCard));
+            final streak = find.byKey(const ValueKey('streak-1'));
+            expect(streak, findsOneWidget, reason: label);
+            expect(
+              find.descendant(of: streak, matching: find.byIcon(Icons.local_fire_department)),
+              findsOneWidget,
+              reason: label,
+            );
+            expect(find.descendant(of: streak, matching: find.text('3')), findsOneWidget);
+            final streakRect = tester.getRect(streak);
+            expect(streakRect.right, lessThanOrEqualTo(cardRect.right), reason: '$label streak');
+            final titleRect = tester.getRect(
+              find.descendant(of: find.byType(RoutinesCard), matching: find.text(_routineTitle)),
+            );
+            expect(
+              titleRect.right,
+              lessThanOrEqualTo(streakRect.left + 0.5),
+              reason: '$label streak vs title',
+            );
+          });
+        }
+      }
+    });
+
+    group('Checkbox corner tap completes ($density density)', () {
+      for (final (width, textScale) in [(360.0, 1.0), (1400.0, 1.5)]) {
+        final label = '$density, width ${width.toInt()}px, textScale $textScale';
+
+        testWidgets('task: 20px from center completes, 30px does not, $label', (tester) async {
+          useClampFixtures();
+          final task = _clampPlan().tasks.firstWhere((t) => t.id == 1);
+          when(
+            () => taskRepo.updateTaskStatus(1, TaskStatus.done),
+          ).thenAnswer((_) async => Right(task.copyWith(status: TaskStatus.done)));
+          await pumpWith(tester, width, textScale);
+          final center = tester.getCenter(checkboxOf(DailyTasksCard, _shortTitle));
+
+          // 30px right of center: outside the 48x48 target, no toggle.
+          await tester.tapAt(center + const Offset(30, 0));
+          await tester.pumpAndSettle();
+          verifyNever(() => taskRepo.updateTaskStatus(any(), any()));
+
+          // Near the corner (20px right and down): inside the target only.
+          await tester.tapAt(center + const Offset(20, 20));
+          await tester.pumpAndSettle();
+          verify(() => taskRepo.updateTaskStatus(1, TaskStatus.done)).called(1);
+          expect(tester.takeException(), isNull, reason: label);
+        });
+
+        testWidgets('routine: 20px from center completes, 30px does not, $label', (tester) async {
+          useClampFixtures();
+          when(() => routineRepo.markDone(any(), any())).thenAnswer((_) async => const Right(null));
+          await pumpWith(tester, width, textScale);
+          final center = tester.getCenter(checkboxOf(RoutinesCard, _shortTitle));
+
+          await tester.tapAt(center + const Offset(30, 0));
+          await tester.pumpAndSettle();
+          verifyNever(() => routineRepo.markDone(any(), any()));
+
+          await tester.tapAt(center + const Offset(20, 20));
+          await tester.pumpAndSettle();
+          verify(() => routineRepo.markDone(3, _day)).called(1);
+          expect(tester.takeException(), isNull, reason: label);
+        });
+      }
+    });
+  }
 }
