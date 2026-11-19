@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:dartz/dartz.dart' hide Task;
 import 'package:varys/core/errors/error_utils.dart';
 import 'package:varys/core/errors/failure.dart';
+import 'package:varys/core/router/app_router.dart';
 import 'package:varys/features/planning/domain/task.dart';
+import 'package:varys/features/planning/domain/task_form.dart';
 import 'package:varys/features/planning/presentation/task_notifier.dart';
+import 'package:varys/features/projects/presentation/projects_list_notifier.dart';
 
 /// Task list page - main planning screen with task management
 class TaskListPage extends ConsumerStatefulWidget {
@@ -18,6 +22,11 @@ class _TaskListPageState extends ConsumerState<TaskListPage> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(taskListNotifierProvider);
+    // Project names for the rows (all statuses). Until loaded, or on a load
+    // error, rows simply show no project name.
+    final projectNames = projectNamesById(
+      ref.watch(projectsListProvider).valueOrNull?.projects ?? const [],
+    );
 
     return state.when(
       loading: () =>
@@ -59,6 +68,7 @@ class _TaskListPageState extends ConsumerState<TaskListPage> {
         ),
         body: _TaskListView(
           tasks: taskState.tasks.value ?? [],
+          projectNames: projectNames,
           onToggle: (id) async => _reportFailure(
             await ref
                 .read(taskListNotifierProvider.notifier)
@@ -69,7 +79,8 @@ class _TaskListPageState extends ConsumerState<TaskListPage> {
           ),
         ),
         floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => _showAddTaskDialog(context, ref),
+          // Full-screen create form outside the shell (push, never go).
+          onPressed: () => context.push(AppRouter.tasksNewPath),
           icon: const Icon(Icons.add),
           label: const Text('Yeni Görev'),
         ),
@@ -88,80 +99,6 @@ class _TaskListPageState extends ConsumerState<TaskListPage> {
         ),
       );
     }, (_) {});
-  }
-
-  void _showAddTaskDialog(BuildContext context, WidgetRef ref) {
-    final titleController = TextEditingController();
-    final descriptionController = TextEditingController();
-    var isSubmitting = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Yeni Görev Ekle'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: titleController,
-                decoration: const InputDecoration(
-                  labelText: 'Başlık *',
-                  hintText: 'Görev başlığını girin',
-                ),
-                autofocus: true,
-                textCapitalization: TextCapitalization.sentences,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: descriptionController,
-                decoration: const InputDecoration(
-                  labelText: 'Açıklama',
-                  hintText: 'Görev açıklamasını girin (isteğe bağlı)',
-                ),
-                maxLines: 3,
-                textCapitalization: TextCapitalization.sentences,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('İptal'),
-            ),
-            FilledButton(
-              onPressed: isSubmitting
-                  ? null
-                  : () async {
-                      final title = titleController.text.trim();
-                      if (title.isEmpty) return;
-
-                      final task = Task(
-                        id: 0,
-                        title: title,
-                        description: descriptionController.text.trim(),
-                        status: TaskStatus.todo,
-                        createdAt: DateTime.now(),
-                        updatedAt: DateTime.now(),
-                        deletedAt: null,
-                      );
-
-                      setDialogState(() => isSubmitting = true);
-                      final result = await ref
-                          .read(taskListNotifierProvider.notifier)
-                          .addTask(task);
-                      if (!dialogContext.mounted) return;
-                      setDialogState(() => isSubmitting = false);
-                      // Success closes the dialog; failure keeps it open with the typed text
-                      if (result.isRight()) Navigator.pop(dialogContext);
-                      _reportFailure(result);
-                    },
-              child: const Text('Ekle'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 
@@ -201,11 +138,13 @@ class _FilterTabs extends StatelessWidget {
 /// Task list view
 class _TaskListView extends StatelessWidget {
   final List<Task> tasks;
+  final Map<int, String> projectNames;
   final ValueChanged<int> onToggle;
   final ValueChanged<int> onDelete;
 
   const _TaskListView({
     required this.tasks,
+    required this.projectNames,
     required this.onToggle,
     required this.onDelete,
   });
@@ -229,6 +168,7 @@ class _TaskListView extends StatelessWidget {
         final task = tasks[index];
         return _TaskTile(
           task: task,
+          projectNames: projectNames,
           onToggle: () => onToggle(task.id),
           onDelete: () => onDelete(task.id),
         );
@@ -240,11 +180,13 @@ class _TaskListView extends StatelessWidget {
 /// Individual task tile
 class _TaskTile extends StatelessWidget {
   final Task task;
+  final Map<int, String> projectNames;
   final VoidCallback onToggle;
   final VoidCallback onDelete;
 
   const _TaskTile({
     required this.task,
+    required this.projectNames,
     required this.onToggle,
     required this.onDelete,
   });
@@ -252,6 +194,8 @@ class _TaskTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final hasDescription = task.description?.isNotEmpty == true;
+    final meta = taskMetaLine(task, projectNames);
 
     return Dismissible(
       key: ValueKey(task.id),
@@ -309,18 +253,37 @@ class _TaskTile extends StatelessWidget {
                   : theme.colorScheme.onSurface,
             ),
           ),
-          subtitle: task.description?.isNotEmpty == true
-              ? Text(
-                  task.description!,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: task.isCompleted
-                        ? theme.colorScheme.onSurfaceVariant
-                        : null,
-                  ),
-                )
-              : null,
+          // Description (if any) and the meta line (project · due day, if
+          // any). Neither → no subtitle, as before; '' draws no empty line.
+          subtitle: !hasDescription && meta == null
+              ? null
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (hasDescription)
+                      Text(
+                        task.description!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: task.isCompleted
+                              ? theme.colorScheme.onSurfaceVariant
+                              : null,
+                        ),
+                      ),
+                    if (meta != null)
+                      Text(
+                        meta,
+                        key: ValueKey('task-meta-${task.id}'),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
           trailing: IconButton(
             icon: const Icon(Icons.delete_outline),
             onPressed: onDelete,

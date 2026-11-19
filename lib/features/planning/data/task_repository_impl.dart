@@ -19,6 +19,9 @@ class TaskRepositoryImpl implements TaskRepository {
 
   static const String _basePath = '/tasks';
 
+  /// createTask 404 when the body carried a `project_id`.
+  static const String projectNotFoundMessage = 'Seçilen proje bulunamadı.';
+
   @override
   Future<Either<Failure, List<Task>>> getTasks() async {
     try {
@@ -87,6 +90,10 @@ class TaskRepositoryImpl implements TaskRepository {
       if (task.dueDate != null) {
         requestBody['due_date'] = plannedDateForApi(task.dueDate!);
       }
+      // project_id only when linked; never an explicit null on create.
+      if (task.projectId != null) {
+        requestBody['project_id'] = task.projectId;
+      }
 
       final response = await _apiClient.post<Map<String, dynamic>>(
         _basePath,
@@ -95,6 +102,13 @@ class TaskRepositoryImpl implements TaskRepository {
       final createdTask = Task.fromJson(response.data!);
       return Right(createdTask);
     } on DioException catch (e) {
+      // With a project_id in the body, a 404 means that project is missing
+      // or was deleted elsewhere; without one the generic message stays.
+      if (task.projectId != null &&
+          e.type == DioExceptionType.badResponse &&
+          e.response?.statusCode == 404) {
+        return const Left(ServerFailure(projectNotFoundMessage, statusCode: 404));
+      }
       return Left(_handleDioError(e));
     } catch (e, stackTrace) {
       if (kDebugMode) {

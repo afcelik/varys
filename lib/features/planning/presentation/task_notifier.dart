@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dartz/dartz.dart' hide Task;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +7,8 @@ import 'package:varys/core/errors/failure.dart';
 import 'package:varys/features/home/presentation/providers/daily_plan_provider.dart';
 import 'package:varys/features/planning/data/task_repository_impl.dart';
 import 'package:varys/features/planning/domain/task.dart';
+import 'package:varys/features/projects/presentation/active_projects_notifier.dart';
+import 'package:varys/features/projects/presentation/projects_list_notifier.dart';
 
 /// State for the TaskList page
 class TaskListState {
@@ -36,8 +40,18 @@ class TaskListState {
 class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
   static const _unexpected = UnknownFailure('Beklenmeyen bir hata oluştu');
 
+  /// Bumped on every build and on dispose; async work captured with an older
+  /// value must not write state.
+  int _generation = 0;
+
+  /// Numbers list fetches (refresh, filter change, silent refresh); a silent
+  /// refresh applies its result only if no newer fetch has started.
+  int _refreshSeq = 0;
+
   @override
   Future<TaskListState> build() async {
+    ++_generation;
+    ref.onDispose(() => _generation++);
     final repository = await ref.watch(taskRepositoryProvider.future);
     final result = await repository.getTasksByFilter(TaskFilter.all);
     final tasks = result.fold((failure) => throw failure, (tasks) => tasks);
@@ -51,6 +65,7 @@ class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
     if (previous == null) return const Left(_unexpected);
     state = AsyncValue.data(previous.copyWith(currentFilter: filter));
 
+    ++_refreshSeq;
     final result = await _fetch(filter);
     return result.fold(
       (failure) {
@@ -67,21 +82,42 @@ class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
     );
   }
 
-  /// Create a task. The list is refreshed on success; on failure the list
-  /// is left untouched and the failure is returned.
+  /// Create a task. On success the server task is put at the top of the
+  /// list at once (if it matches the current filter; the backend lists newest
+  /// first), then the list is re-fetched silently (no loading state; only the
+  /// newest fetch may write; a failed fetch keeps the list). Home's daily
+  /// plan is invalidated; for a task linked to a project the project
+  /// providers (progress, counts) are invalidated once each. On failure the
+  /// list is left untouched and the failure is returned.
+  ///
+  /// The provider is kept alive while the request (and the silent refresh)
+  /// runs, so a closed form or an unwatched Planning tab cannot dispose it
+  /// mid-request.
   Future<Either<Failure, void>> addTask(Task task) async {
+    final link = ref.keepAlive();
+    var linkHandedOff = false;
     try {
+      final generation = _generation;
       final repository = await ref.read(taskRepositoryProvider.future);
       final result = await repository.createTask(task);
-      if (result.isLeft()) {
-        return Left(result.fold((failure) => failure, (_) => _unexpected));
-      }
-      await refreshTasks(); // A refresh failure keeps the current list
-      _syncHome();
-      return const Right(null);
+      return result.fold(
+        (failure) => Left(failure),
+        (created) {
+          if (generation == _generation) {
+            _putCreated(created);
+            linkHandedOff = true;
+            unawaited(_silentRefresh(generation).whenComplete(link.close));
+          }
+          _syncHome();
+          if (created.projectId != null) _syncProjects();
+          return const Right(null);
+        },
+      );
     } catch (e, stackTrace) {
       if (kDebugMode) debugPrint('TaskListNotifier.addTask error: $e\n$stackTrace');
       return const Left(_unexpected);
+    } finally {
+      if (!linkHandedOff) link.close();
     }
   }
 
@@ -152,6 +188,7 @@ class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
   /// Refresh tasks with the current filter. On failure the current list is kept.
   Future<Either<Failure, void>> refreshTasks() async {
     final filter = state.value?.currentFilter ?? TaskFilter.all;
+    ++_refreshSeq;
     final result = await _fetch(filter);
     return result.fold(
       (failure) => Left(failure),
@@ -161,6 +198,41 @@ class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
       },
     );
   }
+
+  /// Re-fetches the current filter's list without a loading state. Errors
+  /// are ignored (the current list stays). Applies only if it is still the
+  /// newest fetch, the same build, and the filter has not changed. If the
+  /// first load is still running it is restarted so it cannot return a list
+  /// from before the create.
+  Future<void> _silentRefresh(int generation) async {
+    final current = state.value;
+    if (current == null) {
+      if (state.isLoading) ref.invalidateSelf();
+      return;
+    }
+    final seq = ++_refreshSeq;
+    final filter = current.currentFilter;
+    final result = await _fetch(filter);
+    if (seq != _refreshSeq || generation != _generation) return;
+    if (state.value?.currentFilter != filter) return;
+    result.fold((_) {}, _setTasks);
+  }
+
+  /// Puts [created] at the top (replacing a copy with the same id) when it
+  /// belongs to the current filter.
+  void _putCreated(Task created) {
+    final current = state.value;
+    final tasks = current?.tasks.value;
+    if (current == null || tasks == null) return;
+    if (!_matchesFilter(current.currentFilter, created)) return;
+    _setTasks([created, ...tasks.where((t) => t.id != created.id)]);
+  }
+
+  static bool _matchesFilter(TaskFilter filter, Task task) => switch (filter) {
+        TaskFilter.all => true,
+        TaskFilter.inProgress => task.status == TaskStatus.todo || task.status == TaskStatus.inProgress,
+        TaskFilter.completed => task.status == TaskStatus.done,
+      };
 
   Future<Either<Failure, List<Task>>> _fetch(TaskFilter filter) async {
     try {
@@ -195,6 +267,14 @@ class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
 
   /// Home's daily plan (focus cards, daily tasks) must reflect task changes.
   void _syncHome() => ref.invalidate(dailyPlanProvider);
+
+  /// A task linked to a project changes that project's progress and counts:
+  /// the projects page list and the Home "Aktif Projeler" card. Neither
+  /// invalidates this provider, so there is no loop.
+  void _syncProjects() {
+    ref.invalidate(projectsListProvider);
+    ref.invalidate(activeProjectsProvider);
+  }
 }
 
 /// Riverpod provider for TaskListNotifier

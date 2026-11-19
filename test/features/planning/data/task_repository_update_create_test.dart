@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:varys/core/errors/failure.dart';
 import 'package:varys/core/network/api_client.dart';
 import 'package:varys/features/home/domain/plan_field.dart';
 import 'package:varys/features/planning/data/task_repository_impl.dart';
@@ -167,6 +168,105 @@ void main() {
       await repository.createTask(newTask());
 
       expect(postedBody(), {'title': 'Yeni iş'});
+    });
+
+    test('no project → project_id key absent (never an explicit null)', () async {
+      await repository.createTask(newTask(due: DateTime(2026, 11, 21)));
+
+      final body = postedBody();
+      expect(body.containsKey('project_id'), isFalse);
+      expect(body.keys.toSet(), {'title', 'due_date'});
+    });
+
+    test('project + due → project_id as int, due_date as day (23:45 input), nothing else', () async {
+      await repository.createTask(
+        newTask(due: DateTime(2026, 11, 21, 23, 45)).copyWith(projectId: 4),
+      );
+
+      final body = postedBody();
+      expect(body.keys.toSet(), {'title', 'due_date', 'project_id'});
+      expect(body['project_id'], isA<int>());
+      expect(body['project_id'], 4);
+      _expectDayFormat(body['due_date'], '2026-11-21');
+      expect(body.containsKey('planned_date'), isFalse);
+    });
+
+    test('Home-style create (planned_date only, no project) body is unchanged', () async {
+      await repository.createTask(newTask(planned: DateTime(2026, 11, 17)));
+
+      expect(postedBody(), {'title': 'Yeni iş', 'planned_date': '2026-11-17T00:00:00'});
+    });
+  });
+
+  group('createTask responses (real POST /tasks fixtures)', () {
+    Map<String, dynamic> fixture(String name) =>
+        jsonDecode(File('test/fixtures/$name').readAsStringSync()) as Map<String, dynamic>;
+
+    Task newTask({int? projectId}) => Task(
+          id: 0,
+          title: 'Projesi silinmiş görev',
+          status: TaskStatus.todo,
+          createdAt: DateTime(2026, 11, 19),
+          updatedAt: DateTime(2026, 11, 19),
+          projectId: projectId,
+        );
+
+    void answerPost(int status, Map<String, dynamic> data) {
+      when(() => api.post<Map<String, dynamic>>(any(), data: any(named: 'data'))).thenAnswer((inv) async {
+        final options = RequestOptions(path: inv.positionalArguments.first as String);
+        final response = Response<Map<String, dynamic>>(requestOptions: options, statusCode: status, data: data);
+        if (status >= 400) {
+          throw DioException(requestOptions: options, response: response, type: DioExceptionType.badResponse);
+        }
+        return response;
+      });
+    }
+
+    test('201 with project and due date parses project_id and the due day', () async {
+      answerPost(201, fixture('task_created_with_project.json'));
+
+      final result = await repository.createTask(newTask(projectId: 1));
+
+      final task = result.getOrElse(() => throw StateError('expected Right'));
+      expect(task.id, 1);
+      expect(task.projectId, 1);
+      expect(task.dueDate, DateTime(2026, 11, 21));
+      expect(task.plannedDate, isNull);
+    });
+
+    test('201 without project and due date parses both as null', () async {
+      answerPost(201, fixture('task_created_plain.json'));
+
+      final result = await repository.createTask(newTask());
+
+      final task = result.getOrElse(() => throw StateError('expected Right'));
+      expect(task.title, 'Market alışverişi');
+      expect(task.projectId, isNull);
+      expect(task.dueDate, isNull);
+    });
+
+    test('404 with project_id in the body → fixed "Seçilen proje bulunamadı.", detail not leaked', () async {
+      final body404 = fixture('task_create_project_404.json');
+      expect(body404['detail'], contains('Project with id'));
+      answerPost(404, body404);
+
+      final result = await repository.createTask(newTask(projectId: 999));
+
+      final failure = result.fold((f) => f, (_) => throw StateError('expected Left'));
+      expect(failure, isA<ServerFailure>());
+      expect((failure as ServerFailure).statusCode, 404);
+      expect(failure.userMessage, 'Seçilen proje bulunamadı.');
+      expect(failure.userMessage, isNot(contains('Project')));
+    });
+
+    test('404 without project_id → the generic "Kaynak bulunamadı." stays', () async {
+      answerPost(404, fixture('task_create_project_404.json'));
+
+      final result = await repository.createTask(newTask());
+
+      final failure = result.fold((f) => f, (_) => throw StateError('expected Left'));
+      expect((failure as ServerFailure).statusCode, 404);
+      expect(failure.userMessage, 'Kaynak bulunamadı.');
     });
   });
 }

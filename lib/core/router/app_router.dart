@@ -11,6 +11,7 @@ import 'package:varys/features/home/presentation/focus_task_selection_page.dart'
 import 'package:varys/features/inbox/presentation/inbox_screen.dart';
 import 'package:varys/features/notes/presentation/notes_screen.dart';
 import 'package:varys/features/planning/presentation/planning_screen.dart';
+import 'package:varys/features/planning/presentation/task_edit_screen.dart';
 import 'package:varys/features/projects/domain/project.dart';
 import 'package:varys/features/projects/presentation/project_edit_screen.dart';
 import 'package:varys/features/projects/presentation/projects_screen.dart';
@@ -45,6 +46,7 @@ class AppRouter {
   static const String projectsPath = '/projects';
   static const String projectsNewPath = '/projects/new';
   static const String projectsEditPath = '/projects/edit';
+  static const String tasksNewPath = '/tasks/new';
 
   /// Router error page (unknown path) texts.
   static const String errorTitle = 'Sayfa bulunamadı';
@@ -178,6 +180,15 @@ class AppRouter {
                   : const ProjectEditUnavailablePage(),
             );
           },
+        ),
+        // Task create form: opened by push from Planning; needs no extra and
+        // has no redirect. Not a menu destination.
+        GoRoute(
+          path: tasksNewPath,
+          name: 'tasks-new',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: TaskEditScreen(),
+          ),
         ),
         // Create form: needs no extra.
         GoRoute(
