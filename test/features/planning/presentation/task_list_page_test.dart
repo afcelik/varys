@@ -271,6 +271,7 @@ void main() {
   });
 
   _subtitleTests();
+  _rowTapTests();
 }
 
 class _MocktailTaskRepository extends Mock implements TaskRepository {}
@@ -389,6 +390,155 @@ void _subtitleTests() {
   });
 }
 
+/// Planning row gestures: the body opens the edit form (it used to toggle
+/// completion); the checkbox completes, Sil deletes, a swipe asks to delete,
+/// and none of those opens the form.
+void _rowTapTests() {
+  group('Planning row: body tap opens the edit form; checkbox, Sil and swipe keep working', () {
+    late _MocktailTaskRepository repo;
+    late GoRouter router;
+
+    Task task(int id, String title) => Task(
+          id: id,
+          title: title,
+          status: TaskStatus.todo,
+          createdAt: DateTime(2026, 11, 1, 10),
+          updatedAt: DateTime(2026, 11, 1, 10),
+        );
+
+    setUpAll(() async {
+      await initializeDateFormatting('tr_TR', null);
+      registerFallbackValue(TaskFilter.all);
+      registerFallbackValue(TaskStatus.todo);
+    });
+
+    setUp(() {
+      repo = _MocktailTaskRepository();
+      when(() => repo.getTasksByFilter(any()))
+          .thenAnswer((_) async => Right([task(1, 'Görev A'), task(2, 'Görev B')]));
+    });
+
+    Future<void> pumpRouted(WidgetTester tester) async {
+      router = GoRouter(
+        initialLocation: AppRouter.planningPath,
+        routes: [
+          GoRoute(path: AppRouter.planningPath, builder: (_, _) => const TaskListPage()),
+          GoRoute(
+            path: AppRouter.tasksEditPath,
+            builder: (_, state) => state.extra is Task
+                ? TaskEditScreen(task: state.extra as Task)
+                : const TaskEditUnavailablePage(),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            taskRepositoryProvider.overrideWith((ref) async => repo),
+            projectRepositoryProvider.overrideWith((ref) async => FakeProjectRepository()),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    Finder row(String title) =>
+        find.ancestor(of: find.text(title), matching: find.byType(ListTile));
+    Finder inRow(String title, Finder matching) =>
+        find.descendant(of: row(title), matching: matching);
+    bool checked(WidgetTester tester, String title) =>
+        tester.widget<Checkbox>(inRow(title, find.byType(Checkbox))).value!;
+
+    testWidgets('body tap opens the form for THAT task and does not complete it', (tester) async {
+      await pumpRouted(tester);
+
+      await tester.tap(find.text('Görev A'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TaskEditScreen), findsOneWidget);
+      expect(tester.widget<TaskEditScreen>(find.byType(TaskEditScreen)).task?.id, 1);
+      expect(find.text(TaskEditScreen.editTitle), findsOneWidget);
+      verifyNever(() => repo.updateTaskStatus(any(), any()));
+
+      router.pop();
+      await tester.pumpAndSettle();
+      expect(checked(tester, 'Görev A'), isFalse, reason: 'still not completed');
+    });
+
+    testWidgets('checkbox tap completes the task and does NOT open the form', (tester) async {
+      when(() => repo.updateTaskStatus(1, TaskStatus.done))
+          .thenAnswer((_) async => Right(task(1, 'Görev A').copyWith(status: TaskStatus.done)));
+      await pumpRouted(tester);
+
+      await tester.tap(inRow('Görev A', find.byType(Checkbox)));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TaskEditScreen), findsNothing);
+      verify(() => repo.updateTaskStatus(1, TaskStatus.done)).called(1);
+      expect(checked(tester, 'Görev A'), isTrue);
+    });
+
+    testWidgets('Sil button deletes and does NOT open the form', (tester) async {
+      when(() => repo.deleteTask(1)).thenAnswer((_) async => const Right(null));
+      await pumpRouted(tester);
+
+      await tester.tap(inRow('Görev A', find.byTooltip('Sil')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TaskEditScreen), findsNothing);
+      verify(() => repo.deleteTask(1)).called(1);
+      expect(find.text('Görev A'), findsNothing);
+    });
+
+    testWidgets('short horizontal drag (below the dismiss threshold): no form, row snaps back', (
+      tester,
+    ) async {
+      await pumpRouted(tester);
+      final before = tester.getTopLeft(row('Görev A'));
+
+      await tester.drag(find.text('Görev A'), const Offset(-60, 0));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TaskEditScreen), findsNothing);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(tester.getTopLeft(row('Görev A')), before, reason: 'back in place');
+      verifyNever(() => repo.deleteTask(any()));
+      verifyNever(() => repo.updateTaskStatus(any(), any()));
+    });
+
+    testWidgets('drag past the threshold opens the delete confirmation, not the form', (
+      tester,
+    ) async {
+      await pumpRouted(tester);
+
+      await tester.drag(find.text('Görev A'), const Offset(-500, 0));
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(AlertDialog, 'Görevi Sil'), findsOneWidget);
+      expect(find.byType(TaskEditScreen), findsNothing);
+
+      await tester.tap(find.text('İptal'));
+      await tester.pumpAndSettle();
+      expect(find.text('Görev A'), findsOneWidget, reason: 'cancel keeps the row');
+      verifyNever(() => repo.deleteTask(any()));
+    });
+
+    testWidgets('tap targets: row, checkbox and Sil are at least 48x48', (tester) async {
+      await pumpRouted(tester);
+
+      expect(tester.getSize(row('Görev A')).height, greaterThanOrEqualTo(48));
+      final checkbox = tester.getSize(inRow('Görev A', find.byType(Checkbox)));
+      expect(checkbox.width, greaterThanOrEqualTo(48));
+      expect(checkbox.height, greaterThanOrEqualTo(48));
+      final delete = tester.getSize(inRow('Görev A', find.byType(IconButton)));
+      expect(delete.width, greaterThanOrEqualTo(48));
+      expect(delete.height, greaterThanOrEqualTo(48));
+    });
+  });
+}
+
 class _MockTaskRepository implements TaskRepository {
   final Either<Failure, List<Task>> getTasksByFilterResult;
 
@@ -411,6 +561,7 @@ class _MockTaskRepository implements TaskRepository {
     TaskStatus? status,
     PlanField<DateTime> plannedDate = const PlanField.unset(),
     PlanField<DateTime> dueDate = const PlanField.unset(),
+    PlanField<int> projectId = const PlanField.unset(),
   }) async =>
       throw UnimplementedError();
 

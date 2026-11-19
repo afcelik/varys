@@ -7,6 +7,7 @@ import 'package:varys/core/errors/failure.dart';
 import 'package:varys/features/home/presentation/providers/daily_plan_provider.dart';
 import 'package:varys/features/planning/data/task_repository_impl.dart';
 import 'package:varys/features/planning/domain/task.dart';
+import 'package:varys/features/planning/domain/task_form.dart';
 import 'package:varys/features/projects/presentation/active_projects_notifier.dart';
 import 'package:varys/features/projects/presentation/projects_list_notifier.dart';
 
@@ -121,6 +122,64 @@ class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
     }
   }
 
+  /// Edit a task: sends only [changes] (see [computeTaskChanges]). Empty
+  /// changes send no request and return [original].
+  ///
+  /// Not optimistic. On success the server task replaces the row at once
+  /// (by id; removed if it no longer matches the current filter), then the
+  /// list is re-fetched silently. Home's daily plan is invalidated once; if
+  /// the project changed (old or new non-null) the project providers are
+  /// invalidated once each.
+  ///
+  /// On a 404 (task deleted elsewhere, or the chosen project is gone) the list
+  /// is re-fetched silently so a stale row disappears; other failures leave
+  /// the list untouched. The failure is returned for the form to show.
+  ///
+  /// Kept alive while the request and the silent refresh run (form closed,
+  /// Planning not watched).
+  Future<Either<Failure, Task>> updateTask(Task original, TaskChanges changes) async {
+    if (changes.isEmpty) return Right(original);
+
+    final link = ref.keepAlive();
+    var linkHandedOff = false;
+    try {
+      final generation = _generation;
+      final repository = await ref.read(taskRepositoryProvider.future);
+      final result = await repository.updateTask(
+        original.id,
+        title: changes.title,
+        description: changes.description,
+        projectId: changes.projectId,
+        dueDate: changes.dueDate,
+        plannedDate: changes.plannedDate,
+      );
+      return result.fold(
+        (failure) {
+          if (failure is ServerFailure && failure.statusCode == 404 && generation == _generation) {
+            linkHandedOff = true;
+            unawaited(_silentRefresh(generation).whenComplete(link.close));
+          }
+          return Left(failure);
+        },
+        (updated) {
+          if (generation == _generation) {
+            _putUpdated(updated);
+            linkHandedOff = true;
+            unawaited(_silentRefresh(generation).whenComplete(link.close));
+          }
+          _syncHome();
+          if (original.projectId != updated.projectId) _syncProjects();
+          return Right(updated);
+        },
+      );
+    } catch (e, stackTrace) {
+      if (kDebugMode) debugPrint('TaskListNotifier.updateTask error: $e\n$stackTrace');
+      return const Left(_unexpected);
+    } finally {
+      if (!linkHandedOff) link.close();
+    }
+  }
+
   /// Toggle task completion (optimistic). Rolls back only this task on failure.
   Future<Either<Failure, void>> toggleTaskCompletion(int taskId) async {
     final original = _findTask(taskId);
@@ -226,6 +285,21 @@ class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
     if (current == null || tasks == null) return;
     if (!_matchesFilter(current.currentFilter, created)) return;
     _setTasks([created, ...tasks.where((t) => t.id != created.id)]);
+  }
+
+  /// Replaces the row with the same id by [updated], or removes it when it
+  /// no longer matches the current filter. A task not in the list is left
+  /// out (the silent refresh decides).
+  void _putUpdated(Task updated) {
+    final current = state.value;
+    final tasks = current?.tasks.value;
+    if (current == null || tasks == null) return;
+    if (!tasks.any((t) => t.id == updated.id)) return;
+    if (!_matchesFilter(current.currentFilter, updated)) {
+      _setTasks(tasks.where((t) => t.id != updated.id).toList());
+      return;
+    }
+    _setTasks(tasks.map((t) => t.id == updated.id ? updated : t).toList());
   }
 
   static bool _matchesFilter(TaskFilter filter, Task task) => switch (filter) {

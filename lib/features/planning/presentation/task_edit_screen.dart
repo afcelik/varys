@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:varys/core/errors/error_utils.dart';
 import 'package:varys/core/errors/failure.dart';
 import 'package:varys/core/router/app_router.dart';
+import 'package:varys/features/home/domain/plan_field.dart';
 import 'package:varys/features/home/domain/today_provider.dart';
 import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/features/planning/domain/task_form.dart';
@@ -12,23 +13,34 @@ import 'package:varys/features/planning/presentation/task_notifier.dart';
 import 'package:varys/features/projects/presentation/projects_list_notifier.dart';
 import 'package:varys/shared/widgets/back_arrow.dart';
 
-/// Task create form (`/tasks/new`): title, description, project, due date.
-///
-/// Only creating is supported in this step; [task] is reserved for editing
-/// and must be null.
+/// Task form. [task] null: create (`/tasks/new`): title, description,
+/// project, due date. [task] given: edit (`/tasks/edit`), the same fields plus
+/// the planned day; no status here (the Planning checkbox does that).
 ///
 /// The project is optional: the choices come from [projectsListProvider].
 /// While they load only "Projesiz" is offered; on a load error a note with
 /// "Tekrar dene" is shown. Kaydet never waits for the projects. A 404 for
 /// the chosen project (deleted elsewhere) keeps the form, resets the choice
 /// to "Projesiz" and reloads the projects.
+///
+/// Edit mode: the task's own project is offered even when completed. While
+/// the projects are not loaded (loading or failed) and the task has a
+/// project, the field is disabled and shows "Mevcut proje" (never
+/// "Projesiz") and the project is not sent. Once loaded, a project missing
+/// from the list (deleted) falls back to "Projesiz" and counts as a change.
+/// Kaydet is enabled only when something changed; only changed fields are
+/// sent ([computeTaskChanges]).
 class TaskEditScreen extends ConsumerStatefulWidget {
-  const TaskEditScreen({super.key, this.task})
-    : assert(task == null, 'Editing a task is not supported yet');
+  const TaskEditScreen({super.key, this.task});
 
   final Task? task;
 
   static const String createTitle = 'Yeni görev';
+  static const String editTitle = 'Görevi düzenle';
+  static const String plannedDateLabel = 'Planlanan gün';
+  static const String plannedDateHelp = 'Boş bırakırsan görev günlük listeden çıkar';
+  static const String clearPlannedDateTooltip = 'Planlanan günü temizle';
+  static const String currentProjectLabel = 'Mevcut proje';
   static const String titleLabel = 'Başlık';
   static const String descriptionLabel = 'Açıklama (isteğe bağlı)';
   static const String projectLabel = 'Proje';
@@ -64,8 +76,26 @@ class _TaskEditScreenState extends ConsumerState<TaskEditScreen> {
   /// Chosen project id; null is "Projesiz".
   int? _projectId;
   DateTime? _dueDate;
+  DateTime? _plannedDate;
   bool _titleTouched = false;
   bool _saving = false;
+
+  Task? get _original => widget.task;
+
+  @override
+  void initState() {
+    super.initState();
+    final task = _original;
+    if (task != null) {
+      _title.text = task.title;
+      _description.text = task.description ?? '';
+      _projectId = task.projectId;
+      _dueDate = _dayOf(task.dueDate);
+      _plannedDate = _dayOf(task.plannedDate);
+    }
+  }
+
+  static DateTime? _dayOf(DateTime? d) => d == null ? null : DateTime(d.year, d.month, d.day);
 
   @override
   void dispose() {
@@ -74,8 +104,26 @@ class _TaskEditScreenState extends ConsumerState<TaskEditScreen> {
     super.dispose();
   }
 
-  bool get _canSave =>
-      !_saving && isTaskFormValid(title: _title.text, description: _description.text);
+  bool get _formValid => isTaskFormValid(title: _title.text, description: _description.text);
+
+  /// Edit mode, task linked to a project, projects not loaded: the project
+  /// cannot be shown or verified yet.
+  bool _projectPending(AsyncValue<Object?> projects) =>
+      _original?.projectId != null && !projects.hasValue;
+
+  /// What the edit form changed; [selected] is the effective choice.
+  TaskChanges _changes(Task original, ProjectChoice selected, bool projectPending) =>
+      computeTaskChanges(
+        original,
+        TaskFormValues(
+          title: _title.text,
+          description: _description.text,
+          projectId: selected.id,
+          projectResolved: !projectPending,
+          dueDate: _dueDate,
+          plannedDate: _plannedDate,
+        ),
+      );
 
   /// The chosen project if it is still offered, otherwise "Projesiz".
   ProjectChoice _selected(List<ProjectChoice> choices) => choices.firstWhere(
@@ -83,19 +131,53 @@ class _TaskEditScreenState extends ConsumerState<TaskEditScreen> {
     orElse: () => ProjectChoice.none,
   );
 
-  Future<void> _pickDate() async {
+  Future<void> _pickDate(DateTime? current, ValueChanged<DateTime> onPicked) async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: _dueDate ?? TaskEditScreen.clampDate(ref.read(todayProvider)),
+      initialDate: current ?? TaskEditScreen.clampDate(ref.read(todayProvider)),
       firstDate: TaskEditScreen.minDate,
       lastDate: TaskEditScreen.maxDate,
     );
     if (!mounted || picked == null) return;
-    setState(() => _dueDate = TaskEditScreen.clampDate(picked));
+    setState(() => onPicked(TaskEditScreen.clampDate(picked)));
+  }
+
+  void _showFailure(Failure failure) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(userMessage(failure)), behavior: SnackBarBehavior.floating),
+    );
+  }
+
+  void _close() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go(AppRouter.planningPath);
+    }
+  }
+
+  Future<void> _saveEdit(Task original, TaskChanges changes) async {
+    if (_saving || !_formValid || changes.isEmpty) return;
+    setState(() => _saving = true);
+    final result = await ref.read(taskListNotifierProvider.notifier).updateTask(original, changes);
+    if (!mounted) return; // page closed while the request ran
+
+    result.fold((failure) {
+      final projectGone =
+          changes.projectId is PlanFieldSet<int> &&
+          failure is ServerFailure &&
+          failure.statusCode == 404;
+      setState(() {
+        _saving = false;
+        if (projectGone) _projectId = null;
+      });
+      if (projectGone) ref.invalidate(projectsListProvider);
+      _showFailure(failure);
+    }, (_) => _close());
   }
 
   Future<void> _save(ProjectChoice project) async {
-    if (!_canSave) return;
+    if (_saving || !_formValid) return;
     setState(() => _saving = true);
     final projectId = project.id;
     final result = await ref
@@ -110,40 +192,48 @@ class _TaskEditScreenState extends ConsumerState<TaskEditScreen> {
         );
     if (!mounted) return; // page closed while the request ran
 
-    result.fold(
-      (failure) {
-        final projectGone =
-            projectId != null && failure is ServerFailure && failure.statusCode == 404;
-        setState(() {
-          _saving = false;
-          if (projectGone) _projectId = null;
-        });
-        if (projectGone) ref.invalidate(projectsListProvider);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(userMessage(failure)), behavior: SnackBarBehavior.floating),
-        );
-      },
-      (_) {
-        if (context.canPop()) {
-          context.pop();
-        } else {
-          context.go(AppRouter.planningPath);
-        }
-      },
-    );
+    result.fold((failure) {
+      final projectGone =
+          projectId != null && failure is ServerFailure && failure.statusCode == 404;
+      setState(() {
+        _saving = false;
+        if (projectGone) _projectId = null;
+      });
+      if (projectGone) ref.invalidate(projectsListProvider);
+      _showFailure(failure);
+    }, (_) => _close());
   }
 
   @override
   Widget build(BuildContext context) {
     final projects = ref.watch(projectsListProvider);
-    final choices = projectChoices(projects.valueOrNull?.projects ?? const []);
-    final selected = _selected(choices);
+    final original = _original;
+    final projectPending = _projectPending(projects);
+    final List<ProjectChoice> choices;
+    final ProjectChoice selected;
+    if (projectPending) {
+      // Not "Projesiz": the task keeps its project until the list is known.
+      selected = ProjectChoice(id: original!.projectId, label: TaskEditScreen.currentProjectLabel);
+      choices = [selected];
+    } else {
+      choices = projectChoices(
+        projects.valueOrNull?.projects ?? const [],
+        keepProjectId: original?.projectId,
+      );
+      selected = _selected(choices);
+    }
     final titleError = _titleTouched ? validateTaskTitle(_title.text) : null;
+    final changes = original == null ? null : _changes(original, selected, projectPending);
+    final canSave = !_saving && _formValid && (changes == null || !changes.isEmpty);
 
     return Scaffold(
       appBar: AppBar(
         leading: context.backArrowLeading(fallbackRoute: AppRouter.planningPath),
-        title: const Text(TaskEditScreen.createTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(
+          original == null ? TaskEditScreen.createTitle : TaskEditScreen.editTitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -180,14 +270,30 @@ class _TaskEditScreenState extends ConsumerState<TaskEditScreen> {
                 onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 24),
-              _projectField(Theme.of(context), projects, choices, selected),
+              _projectField(Theme.of(context), projects, choices, selected, projectPending),
               const SizedBox(height: 24),
-              _DueDateField(
+              _DateField(
+                keyPrefix: 'task-due-date',
+                label: TaskEditScreen.dueDateLabel,
+                clearTooltip: TaskEditScreen.clearDateTooltip,
                 date: _dueDate,
                 enabled: !_saving,
-                onPick: _pickDate,
+                onPick: () => _pickDate(_dueDate, (d) => _dueDate = d),
                 onClear: () => setState(() => _dueDate = null),
               ),
+              if (original != null) ...[
+                const SizedBox(height: 24),
+                _DateField(
+                  keyPrefix: 'task-planned-date',
+                  label: TaskEditScreen.plannedDateLabel,
+                  clearTooltip: TaskEditScreen.clearPlannedDateTooltip,
+                  helperText: TaskEditScreen.plannedDateHelp,
+                  date: _plannedDate,
+                  enabled: !_saving,
+                  onPick: () => _pickDate(_plannedDate, (d) => _plannedDate = d),
+                  onClear: () => setState(() => _plannedDate = null),
+                ),
+              ],
             ],
           ),
         ),
@@ -201,7 +307,11 @@ class _TaskEditScreenState extends ConsumerState<TaskEditScreen> {
           padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + MediaQuery.viewInsetsOf(context).bottom),
           child: FilledButton(
             key: const ValueKey('task-save'),
-            onPressed: _canSave ? () => _save(selected) : null,
+            onPressed: !canSave
+                ? null
+                : original == null
+                ? () => _save(selected)
+                : () => _saveEdit(original, changes!),
             style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
             child: const Text(TaskEditScreen.saveText),
           ),
@@ -215,6 +325,7 @@ class _TaskEditScreenState extends ConsumerState<TaskEditScreen> {
     AsyncValue<Object?> projects,
     List<ProjectChoice> choices,
     ProjectChoice selected,
+    bool projectPending,
   ) {
     final children = <Widget>[
       DropdownMenu<ProjectChoice>(
@@ -222,7 +333,7 @@ class _TaskEditScreenState extends ConsumerState<TaskEditScreen> {
         // shows the current selection.
         key: ValueKey('task-project-${selected.id}-${choices.length}'),
         initialSelection: selected,
-        enabled: !_saving,
+        enabled: !_saving && !projectPending,
         requestFocusOnTap: false,
         expandedInsets: EdgeInsets.zero,
         label: const Text(TaskEditScreen.projectLabel),
@@ -275,15 +386,24 @@ class _TaskEditScreenState extends ConsumerState<TaskEditScreen> {
   }
 }
 
-/// Optional due date: tap to pick (48 high), × to clear (48x48).
-class _DueDateField extends StatelessWidget {
-  const _DueDateField({
+/// Optional day: tap to pick (48 high), × to clear (48x48). Keys:
+/// `<keyPrefix>-button`, `<keyPrefix>`, `<keyPrefix>-clear`, `<keyPrefix>-text`.
+class _DateField extends StatelessWidget {
+  const _DateField({
+    required this.keyPrefix,
+    required this.label,
+    required this.clearTooltip,
     required this.date,
     required this.enabled,
     required this.onPick,
     required this.onClear,
+    this.helperText,
   });
 
+  final String keyPrefix;
+  final String label;
+  final String clearTooltip;
+  final String? helperText;
   final DateTime? date;
   final bool enabled;
   final VoidCallback onPick;
@@ -293,32 +413,61 @@ class _DueDateField extends StatelessWidget {
   Widget build(BuildContext context) {
     final d = date;
     return InkWell(
-      key: const ValueKey('task-due-date-button'),
+      key: ValueKey('$keyPrefix-button'),
       onTap: enabled ? onPick : null,
       borderRadius: BorderRadius.circular(4),
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 48),
         child: InputDecorator(
-          key: const ValueKey('task-due-date'),
+          key: ValueKey(keyPrefix),
           isEmpty: false,
           decoration: InputDecoration(
-            labelText: TaskEditScreen.dueDateLabel,
+            labelText: label,
+            helperText: helperText,
+            helperMaxLines: 3,
             enabled: enabled,
             suffixIcon: d == null
                 ? const Icon(Icons.calendar_today)
                 : IconButton(
-                    key: const ValueKey('task-due-date-clear'),
+                    key: ValueKey('$keyPrefix-clear'),
                     icon: const Icon(Icons.close),
-                    tooltip: TaskEditScreen.clearDateTooltip,
+                    tooltip: clearTooltip,
                     constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                     onPressed: enabled ? onClear : null,
                   ),
           ),
           child: Text(
             d == null ? TaskEditScreen.noDateText : TaskEditScreen.formatDate(d),
-            key: const ValueKey('task-due-date-text'),
+            key: ValueKey('$keyPrefix-text'),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown when `/tasks/edit` is opened without a Task (deep link,
+/// notification, wrong extra). Leaves with BackArrow (pop, or /home).
+class TaskEditUnavailablePage extends StatelessWidget {
+  const TaskEditUnavailablePage({super.key});
+
+  static const String message = 'Bu sayfa doğrudan açılamaz.';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(leading: const BackArrow()),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            message,
+            key: const ValueKey('task-edit-unavailable'),
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ),
       ),

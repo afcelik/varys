@@ -100,6 +100,7 @@ class _FakeTaskServer implements TaskRepository {
     TaskStatus? status,
     PlanField<DateTime> plannedDate = const PlanField.unset(),
     PlanField<DateTime> dueDate = const PlanField.unset(),
+    PlanField<int> projectId = const PlanField.unset(),
   }) => throw UnimplementedError('not used by this flow');
 
   @override

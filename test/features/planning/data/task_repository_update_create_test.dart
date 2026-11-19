@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:dartz/dartz.dart' hide Task;
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -267,6 +268,164 @@ void main() {
       final failure = result.fold((f) => f, (_) => throw StateError('expected Left'));
       expect((failure as ServerFailure).statusCode, 404);
       expect(failure.userMessage, 'Kaynak bulunamadı.');
+    });
+  });
+
+  group('updateTask for the edit form (only changed fields)', () {
+    test('project_id set → int value; clear → key present with null; unset → key absent', () async {
+      await repository.updateTask(7, projectId: const PlanField.set(2));
+      final setBody = patchedBody();
+      expect(setBody, {'project_id': 2});
+      expect(setBody['project_id'], isA<int>());
+
+      await repository.updateTask(7, projectId: const PlanField.clear());
+      final clearBody = patchedBody();
+      expect(clearBody.containsKey('project_id'), isTrue);
+      expect(clearBody['project_id'], isNull);
+      expect(jsonEncode(clearBody), '{"project_id":null}');
+
+      await repository.updateTask(7, title: 'Başlık');
+      expect(patchedBody().containsKey('project_id'), isFalse);
+    });
+
+    test('every field cleared → all four keys present with null, no title/status', () async {
+      await repository.updateTask(
+        7,
+        description: const PlanField.clear(),
+        projectId: const PlanField.clear(),
+        dueDate: const PlanField.clear(),
+        plannedDate: const PlanField.clear(),
+      );
+
+      final body = patchedBody();
+      expect(body, {'description': null, 'project_id': null, 'due_date': null, 'planned_date': null});
+      expect(jsonDecode(jsonEncode(body)), body, reason: 'explicit nulls survive JSON encoding');
+    });
+
+    test('mixed edit: title + project + two days, day format has no time/TZ', () async {
+      await repository.updateTask(
+        7,
+        title: 'Yeni',
+        projectId: const PlanField.set(4),
+        dueDate: PlanField.set(DateTime(2026, 11, 25, 23, 45)),
+        plannedDate: PlanField.set(DateTime(2026, 11, 20)),
+      );
+
+      final body = patchedBody();
+      expect(body.keys.toSet(), {'title', 'project_id', 'due_date', 'planned_date'});
+      _expectDayFormat(body['due_date'], '2026-11-25');
+      _expectDayFormat(body['planned_date'], '2026-11-20');
+      expect(body.containsKey('status'), isFalse);
+      expect(body.containsKey('description'), isFalse);
+    });
+  });
+
+  group('updateTask responses (real PATCH /tasks fixtures)', () {
+    Map<String, dynamic> fixture(String name) =>
+        jsonDecode(File('test/fixtures/$name').readAsStringSync()) as Map<String, dynamic>;
+
+    void answerPatch(int status, Map<String, dynamic> data) {
+      when(() => api.patch<Map<String, dynamic>>(any(), data: any(named: 'data'))).thenAnswer((
+        inv,
+      ) async {
+        final options = RequestOptions(path: inv.positionalArguments.first as String);
+        final response = Response<Map<String, dynamic>>(
+          requestOptions: options,
+          statusCode: status,
+          data: data,
+        );
+        if (status >= 400) {
+          throw DioException(
+            requestOptions: options,
+            response: response,
+            type: DioExceptionType.badResponse,
+          );
+        }
+        return response;
+      });
+    }
+
+    Failure leftOf(Either<Failure, Task> result) =>
+        result.fold((f) => f, (_) => throw StateError('expected Left'));
+
+    test('200 with project and due date set parses both', () async {
+      answerPatch(200, fixture('task_update_set.json'));
+
+      final result = await repository.updateTask(
+        1,
+        projectId: const PlanField.set(2),
+        dueDate: PlanField.set(DateTime(2026, 11, 25)),
+      );
+
+      final task = result.getOrElse(() => throw StateError('expected Right'));
+      expect(task.projectId, 2);
+      expect(task.dueDate, DateTime(2026, 11, 25));
+      expect(task.plannedDate, DateTime(2026, 11, 19));
+      expect(task.title, 'Giriş ekranını bitir ve test et');
+    });
+
+    test('200 after clearing everything parses every cleared field as null', () async {
+      answerPatch(200, fixture('task_update_cleared.json'));
+
+      final result = await repository.updateTask(
+        1,
+        description: const PlanField.clear(),
+        projectId: const PlanField.clear(),
+        dueDate: const PlanField.clear(),
+        plannedDate: const PlanField.clear(),
+      );
+
+      final task = result.getOrElse(() => throw StateError('expected Right'));
+      expect(task.description, isNull);
+      expect(task.projectId, isNull);
+      expect(task.dueDate, isNull);
+      expect(task.plannedDate, isNull);
+      expect(task.title, 'Giriş ekranını bitir ve test et');
+    });
+
+    test('404 with project_id SET → "Seçilen proje bulunamadı.", detail not leaked', () async {
+      final body404 = fixture('task_update_project_404.json');
+      expect(body404['detail'], contains('Project with id'));
+      answerPatch(404, body404);
+
+      final failure = leftOf(await repository.updateTask(1, projectId: const PlanField.set(999)));
+
+      expect(failure, isA<ServerFailure>());
+      expect((failure as ServerFailure).statusCode, 404);
+      expect(failure.userMessage, 'Seçilen proje bulunamadı.');
+      expect(failure.userMessage, isNot(contains('Project')));
+    });
+
+    test('task 404 without project_id → generic "Kaynak bulunamadı."', () async {
+      final body404 = fixture('task_update_404.json');
+      expect(body404['detail'], contains('Task with id'));
+      answerPatch(404, body404);
+
+      final failure = leftOf(await repository.updateTask(9999, title: 'Yok'));
+
+      expect((failure as ServerFailure).statusCode, 404);
+      expect(failure.userMessage, 'Kaynak bulunamadı.');
+      expect(failure.userMessage, isNot(contains('Task')));
+    });
+
+    test('404 with project_id CLEARED is the task, not the project → generic message', () async {
+      answerPatch(404, fixture('task_update_404.json'));
+
+      final failure = leftOf(await repository.updateTask(9999, projectId: const PlanField.clear()));
+
+      expect(failure.userMessage, 'Kaynak bulunamadı.');
+    });
+
+    test('422 (title null) → fixed Turkish message, validation detail not leaked', () async {
+      final body422 = fixture('task_update_title_null_422.json');
+      expect(body422['detail'].toString(), contains('title cannot be null'));
+      answerPatch(422, body422);
+
+      final failure = leftOf(await repository.updateTask(1, title: 'x'));
+
+      expect((failure as ServerFailure).statusCode, 422);
+      expect(failure.userMessage, 'Gönderilen veriler geçersiz.');
+      expect(failure.userMessage, isNot(contains('title')));
     });
   });
 }

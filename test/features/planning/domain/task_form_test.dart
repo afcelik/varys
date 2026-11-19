@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:varys/features/home/domain/plan_field.dart';
 import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/features/planning/domain/task_form.dart';
 import 'package:varys/features/projects/domain/project.dart';
@@ -126,6 +127,173 @@ void main() {
       expect(taskMetaLine(_task(projectId: 999), names), isNull);
       expect(taskMetaLine(_task(projectId: 999, due: DateTime(2026, 11, 21)), names), '21 Kas');
       expect(taskMetaLine(_task(projectId: 1), const {}), isNull);
+    });
+  });
+
+  group('projectChoices keepProjectId (edit form)', () {
+    final projects = projectsFixture();
+
+    test("the task's completed project is offered last with 'Tamamlanan'; others stay hidden", () {
+      final completed = projects.singleWhere((p) => p.id == 5);
+      expect(completed.status, ProjectStatus.completed);
+      // A second completed project (copied from the real one) must stay hidden.
+      final all = [...projects, completed.copyWith(id: 6, title: 'Eski iş')];
+
+      final choices = projectChoices(all, keepProjectId: 5);
+      expect(choices.map((c) => c.id), [null, 1, 2, 3, 4, 5]);
+      expect(choices.last.label, 'Vergi beyannamesi');
+      expect(choices.last.statusLabel, 'Tamamlanan');
+      expect(projectChoices(all, keepProjectId: 6).map((c) => c.id), [null, 1, 2, 3, 4, 6]);
+    });
+
+    test('a non-completed or unknown keepProjectId changes nothing', () {
+      expect(projectChoices(projects, keepProjectId: 1), projectChoices(projects));
+      expect(projectChoices(projects, keepProjectId: 999), projectChoices(projects));
+    });
+  });
+
+  group('computeTaskChanges', () {
+    final original = Task(
+      id: 7,
+      title: 'Giriş ekranı',
+      description: 'Form',
+      status: TaskStatus.todo,
+      createdAt: DateTime(2026, 11, 19),
+      updatedAt: DateTime(2026, 11, 19),
+      projectId: 1,
+      dueDate: DateTime(2026, 11, 21),
+      plannedDate: DateTime(2026, 11, 19),
+    );
+
+    TaskFormValues form({
+      String title = 'Giriş ekranı',
+      String description = 'Form',
+      int? projectId = 1,
+      bool projectResolved = true,
+      DateTime? due,
+      DateTime? planned,
+      bool clearDue = false,
+      bool clearPlanned = false,
+    }) => TaskFormValues(
+      title: title,
+      description: description,
+      projectId: projectId,
+      projectResolved: projectResolved,
+      dueDate: clearDue ? null : (due ?? DateTime(2026, 11, 21)),
+      plannedDate: clearPlanned ? null : (planned ?? DateTime(2026, 11, 19)),
+    );
+
+    test('same values → isEmpty, every field unset', () {
+      final c = computeTaskChanges(original, form());
+      expect(c.isEmpty, isTrue);
+      expect(c, const TaskChanges());
+    });
+
+    test('title: trimmed set; trimmed-equal is no change', () {
+      expect(computeTaskChanges(original, form(title: '  Yeni  ')).title, 'Yeni');
+      expect(computeTaskChanges(original, form(title: '  Giriş ekranı ')).isEmpty, isTrue);
+    });
+
+    test('whitespace-only title is invalid (form cannot be saved)', () {
+      expect(isTaskFormValid(title: '   ', description: ''), isFalse);
+    });
+
+    test('description: set (trimmed), clear when emptied, unset when equal', () {
+      expect(
+        computeTaskChanges(original, form(description: ' Yeni not ')).description,
+        const PlanField<String>.set('Yeni not'),
+      );
+      expect(
+        computeTaskChanges(original, form(description: '   ')).description,
+        const PlanField<String>.clear(),
+      );
+      expect(computeTaskChanges(original, form(description: ' Form ')).description.isUnset, isTrue);
+    });
+
+    test('description: null and empty are equal (no change either way)', () {
+      final noDesc = original.copyWith(description: null);
+      expect(computeTaskChanges(noDesc, form(description: '')).isEmpty, isTrue);
+      final emptyDesc = original.copyWith(description: '');
+      expect(computeTaskChanges(emptyDesc, form(description: '  ')).isEmpty, isTrue);
+      expect(
+        computeTaskChanges(noDesc, form(description: 'Not')).description,
+        const PlanField<String>.set('Not'),
+      );
+    });
+
+    test('project: set, clear, unset', () {
+      expect(
+        computeTaskChanges(original, form(projectId: 3)).projectId,
+        const PlanField<int>.set(3),
+      );
+      expect(
+        computeTaskChanges(original, form(projectId: null)).projectId,
+        const PlanField<int>.clear(),
+      );
+      expect(computeTaskChanges(original, form(projectId: 1)).projectId.isUnset, isTrue);
+      final noProject = original.copyWith(projectId: null);
+      expect(
+        computeTaskChanges(noProject, form(projectId: 2)).projectId,
+        const PlanField<int>.set(2),
+      );
+    });
+
+    test('project not resolved (list not loaded) → always unset', () {
+      final c = computeTaskChanges(original, form(projectId: null, projectResolved: false));
+      expect(c.projectId.isUnset, isTrue);
+      expect(c.isEmpty, isTrue);
+    });
+
+    test('due date: set (day only), clear, unset', () {
+      expect(
+        computeTaskChanges(original, form(due: DateTime(2026, 12, 2, 18, 30))).dueDate,
+        PlanField<DateTime>.set(DateTime(2026, 12, 2)),
+      );
+      expect(
+        computeTaskChanges(original, form(clearDue: true)).dueDate,
+        const PlanField<DateTime>.clear(),
+      );
+      expect(computeTaskChanges(original, form()).dueDate.isUnset, isTrue);
+    });
+
+    test('planned date: set (day only), clear, unset', () {
+      expect(
+        computeTaskChanges(original, form(planned: DateTime(2026, 11, 20))).plannedDate,
+        PlanField<DateTime>.set(DateTime(2026, 11, 20)),
+      );
+      expect(
+        computeTaskChanges(original, form(clearPlanned: true)).plannedDate,
+        const PlanField<DateTime>.clear(),
+      );
+      final unplanned = original.copyWith(plannedDate: null);
+      expect(computeTaskChanges(unplanned, form(clearPlanned: true)).plannedDate.isUnset, isTrue);
+    });
+
+    test('same day at a different time is NO change (time part ignored)', () {
+      final timed = original.copyWith(
+        dueDate: DateTime(2026, 11, 21, 9, 15),
+        plannedDate: DateTime(2026, 11, 19, 23, 59),
+      );
+      final c = computeTaskChanges(
+        timed,
+        form(due: DateTime(2026, 11, 21, 18), planned: DateTime(2026, 11, 19)),
+      );
+      expect(c.isEmpty, isTrue);
+    });
+
+    test('several changes at once carry only the changed fields', () {
+      final c = computeTaskChanges(
+        original,
+        form(title: 'Yeni', projectId: null, clearPlanned: true),
+      );
+      expect(
+        c,
+        const TaskChanges(
+          title: 'Yeni',
+          projectId: PlanField.clear(),
+          plannedDate: PlanField.clear(),
+        ),
+      );
     });
   });
 }

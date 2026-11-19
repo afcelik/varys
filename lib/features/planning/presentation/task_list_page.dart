@@ -171,6 +171,7 @@ class _TaskListView extends StatelessWidget {
           projectNames: projectNames,
           onToggle: () => onToggle(task.id),
           onDelete: () => onDelete(task.id),
+          onEdit: () => context.push(AppRouter.tasksEditPath, extra: task),
         );
       },
     );
@@ -184,11 +185,15 @@ class _TaskTile extends StatelessWidget {
   final VoidCallback onToggle;
   final VoidCallback onDelete;
 
+  /// Row body tap: opens the edit form. Completing is the checkbox only.
+  final VoidCallback onEdit;
+
   const _TaskTile({
     required this.task,
     required this.projectNames,
     required this.onToggle,
     required this.onDelete,
+    required this.onEdit,
   });
 
   @override
@@ -289,7 +294,7 @@ class _TaskTile extends StatelessWidget {
             onPressed: onDelete,
             tooltip: 'Sil',
           ),
-          onTap: onToggle,
+          onTap: onEdit,
         ),
       ),
     );

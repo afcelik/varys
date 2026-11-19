@@ -21,6 +21,8 @@ abstract class TaskRepository {
   /// sent: `title`/`status` null → not sent; for [PlanField] fields
   /// unset → key absent, set → value, clear → explicit `null`.
   /// Dates are sent as `YYYY-MM-DDT00:00:00` (no timezone).
+  /// A 404 while [projectId] is set means the project is missing or deleted
+  /// ("Seçilen proje bulunamadı."); otherwise a 404 is the generic message.
   Future<Either<Failure, Task>> updateTask(
     int id, {
     String? title,
@@ -28,6 +30,7 @@ abstract class TaskRepository {
     TaskStatus? status,
     PlanField<DateTime> plannedDate = const PlanField.unset(),
     PlanField<DateTime> dueDate = const PlanField.unset(),
+    PlanField<int> projectId = const PlanField.unset(),
   });
 
   /// Deletes a task by ID

@@ -298,4 +298,41 @@ void main() {
       expect(Task.fromJson(first).projectId, isNull);
     });
   });
+
+  group('Task PATCH responses (real backend PATCH /tasks/{id})', () {
+    Map<String, dynamic> fixture(String name) =>
+        jsonDecode(File('test/fixtures/$name').readAsStringSync()) as Map<String, dynamic>;
+
+    test('set response: every field parsed as the backend sent it', () {
+      final json = fixture('task_update_set.json');
+      final task = Task.fromJson(json);
+      expect(task.id, 1);
+      expect(task.title, 'Giriş ekranını bitir ve test et');
+      expect(task.description, 'Form ve hata mesajları');
+      expect(task.status, TaskStatus.todo);
+      expect(task.projectId, 2);
+      expect(task.dueDate, DateTime(2026, 11, 25));
+      expect(task.plannedDate, DateTime(2026, 11, 19));
+      expect(task.deletedAt, isNull);
+      expect(json['due_date'], '2026-11-25T00:00:00', reason: 'naive day, no TZ');
+      expect(Task.fromJson(task.toJson()), task);
+    });
+
+    test('cleared response: the four cleared keys are present and null', () {
+      final json = fixture('task_update_cleared.json');
+      for (final key in ['description', 'due_date', 'planned_date', 'project_id']) {
+        expect(json.containsKey(key), isTrue, reason: key);
+        expect(json[key], isNull, reason: key);
+      }
+      final task = Task.fromJson(json);
+      expect(task.description, isNull);
+      expect(task.dueDate, isNull);
+      expect(task.plannedDate, isNull);
+      expect(task.projectId, isNull);
+      expect(task.title, 'Giriş ekranını bitir ve test et');
+      final back = task.toJson();
+      expect(back.containsKey('project_id'), isTrue);
+      expect(Task.fromJson(back), task);
+    });
+  });
 }

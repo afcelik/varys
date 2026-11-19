@@ -10,6 +10,7 @@ import 'package:varys/features/home/domain/focus_candidates.dart';
 import 'package:varys/features/home/presentation/focus_task_selection_page.dart';
 import 'package:varys/features/inbox/presentation/inbox_screen.dart';
 import 'package:varys/features/notes/presentation/notes_screen.dart';
+import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/features/planning/presentation/planning_screen.dart';
 import 'package:varys/features/planning/presentation/task_edit_screen.dart';
 import 'package:varys/features/projects/domain/project.dart';
@@ -47,6 +48,7 @@ class AppRouter {
   static const String projectsNewPath = '/projects/new';
   static const String projectsEditPath = '/projects/edit';
   static const String tasksNewPath = '/tasks/new';
+  static const String tasksEditPath = '/tasks/edit';
 
   /// Router error page (unknown path) texts.
   static const String errorTitle = 'Sayfa bulunamadı';
@@ -189,6 +191,22 @@ class AppRouter {
           pageBuilder: (context, state) => const NoTransitionPage(
             child: TaskEditScreen(),
           ),
+        ),
+        // Task edit form: the Task must come as extra (pushed from a Planning
+        // row). Anything else (null, wrong type) shows an error page; no
+        // fallback to create and no redirect (a redirect on push adds a
+        // second /home). Not a menu destination.
+        GoRoute(
+          path: tasksEditPath,
+          name: 'tasks-edit',
+          pageBuilder: (context, state) {
+            final extra = state.extra;
+            return NoTransitionPage(
+              child: extra is Task
+                  ? TaskEditScreen(key: ValueKey('task-edit-${extra.id}'), task: extra)
+                  : const TaskEditUnavailablePage(),
+            );
+          },
         ),
         // Create form: needs no extra.
         GoRoute(

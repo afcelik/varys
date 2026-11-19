@@ -19,7 +19,7 @@ class TaskRepositoryImpl implements TaskRepository {
 
   static const String _basePath = '/tasks';
 
-  /// createTask 404 when the body carried a `project_id`.
+  /// createTask/updateTask 404 when the body carried a (non-null) `project_id`.
   static const String projectNotFoundMessage = 'Seçilen proje bulunamadı.';
 
   @override
@@ -127,6 +127,7 @@ class TaskRepositoryImpl implements TaskRepository {
     TaskStatus? status,
     PlanField<DateTime> plannedDate = const PlanField.unset(),
     PlanField<DateTime> dueDate = const PlanField.unset(),
+    PlanField<int> projectId = const PlanField.unset(),
   }) async {
     try {
       // Only explicitly given fields are sent; clear → explicit null.
@@ -136,6 +137,7 @@ class TaskRepositoryImpl implements TaskRepository {
       if (status != null) requestBody['status'] = status.name;
       _writeDay(requestBody, 'planned_date', plannedDate);
       _writeDay(requestBody, 'due_date', dueDate);
+      projectId.writeTo(requestBody, 'project_id');
 
       final response = await _apiClient.patch<Map<String, dynamic>>(
         '$_basePath/$id',
@@ -144,6 +146,13 @@ class TaskRepositoryImpl implements TaskRepository {
       final updatedTask = Task.fromJson(response.data!);
       return Right(updatedTask);
     } on DioException catch (e) {
+      // Only a project id being SET can be the missing resource besides the
+      // task itself; a clear (null) never 404s for the project.
+      if (projectId is PlanFieldSet<int> &&
+          e.type == DioExceptionType.badResponse &&
+          e.response?.statusCode == 404) {
+        return const Left(ServerFailure(projectNotFoundMessage, statusCode: 404));
+      }
       return Left(_handleDioError(e));
     } catch (e, stackTrace) {
       if (kDebugMode) {
