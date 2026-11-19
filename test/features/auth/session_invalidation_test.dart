@@ -1,6 +1,6 @@
 // Session end (expiry or deliberate logout) invalidates every user-data
-// provider: after the next login routines, daily plan, task list and active
-// projects are fetched again and no old data or old error state is shown.
+// provider: after the next login routines, daily plan, task list, active
+// projects and the projects page list are fetched again and no old data or old error state is shown.
 
 import 'dart:convert';
 import 'dart:io';
@@ -25,6 +25,7 @@ import 'package:varys/features/projects/data/project_repository_impl.dart';
 import 'package:varys/features/projects/domain/project.dart';
 import 'package:varys/features/projects/domain/project_repository.dart';
 import 'package:varys/features/projects/presentation/active_projects_notifier.dart';
+import 'package:varys/features/projects/presentation/projects_list_notifier.dart';
 import 'package:varys/features/routines/data/routine_repository_impl.dart';
 import 'package:varys/features/routines/domain/routine.dart';
 import 'package:varys/features/routines/domain/routine_repository.dart';
@@ -127,6 +128,7 @@ void main() {
     container.listen(routinesForDayProvider(_day), (_, _) {});
     container.listen(routinesListProvider, (_, _) {}); // open /routines page
     container.listen(activeProjectsProvider, (_, _) {}); // Home projects card
+    container.listen(projectsListProvider, (_, _) {}); // open /projects page
     await _flush();
 
     expect(container.read(dailyPlanProvider).requireValue.tasks, [tasks.first]);
@@ -135,6 +137,7 @@ void main() {
     expect(container.read(routinesForDayProvider(_day)).hasError, isTrue);
     expect(container.read(routinesListProvider).requireValue, [routineList.first]);
     expect(container.read(activeProjectsProvider).error, _failure);
+    expect(container.read(projectsListProvider).error, _failure);
   });
 
   tearDown(() => container.dispose());
@@ -164,13 +167,19 @@ void main() {
     expect(projectsValue.hasError, isFalse, reason: 'old project error state must be gone');
     expect(projectsValue.requireValue.projects, activeProjects);
     expect(projectsValue.requireValue.activeCount, 2);
+    final listValue = container.read(projectsListProvider);
+    expect(listValue.hasError, isFalse, reason: 'old projects page error must be gone');
+    expect(listValue.requireValue.projects, activeProjects);
+    expect(listValue.requireValue.limits, limits);
 
     verify(() => planRepo.getPlan(_day)).called(2);
     verify(() => taskRepo.getTasksByFilter(TaskFilter.all)).called(2);
     verify(() => routineRepo.getRoutinesForDay(_day)).called(2);
     verify(() => routineRepo.getRoutines()).called(2);
     verify(() => projectRepo.getProjects(status: ProjectStatus.active)).called(2);
-    verify(() => projectRepo.getLimits()).called(2);
+    verify(() => projectRepo.getProjects()).called(2); // projects page: no status filter
+    // Card and page each load the limits once per session.
+    verify(() => projectRepo.getLimits()).called(4);
   }
 
   test('session expiry invalidates routines, daily plan and tasks; re-login reloads them',
@@ -206,8 +215,9 @@ void main() {
       taskRepositoryProvider,
       activeProjectsProvider,
       projectRepositoryProvider,
+      projectsListProvider,
     });
-    expect(userData, hasLength(9));
+    expect(userData, hasLength(10));
 
     final infra = <ProviderOrFamily>[];
     AuthNotifier.invalidateSessionInfra(infra.add);
@@ -222,5 +232,6 @@ void main() {
     expect(container.read(routinesListProvider).requireValue, [routineList.first]);
     expect(container.read(dailyPlanProvider).requireValue.tasks, [tasks.first]);
     expect(container.read(activeProjectsProvider).hasError, isTrue);
+    expect(container.read(projectsListProvider).hasError, isTrue);
   });
 }

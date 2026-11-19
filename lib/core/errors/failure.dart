@@ -24,6 +24,19 @@ class ValidationFailure extends Failure {
   String get userMessage => message;
 }
 
+/// 409 with the backend code `active_project_limit_reached`: activating a
+/// project would exceed the active project limit. Only that exact code maps
+/// here; the backend text is never stored or shown.
+class ActiveProjectLimitFailure extends Failure {
+  const ActiveProjectLimitFailure();
+
+  static const String message =
+      'Aktif proje sınırına ulaşıldı. Önce bir projeyi beklemeye ya da ileriye al.';
+
+  @override
+  String get userMessage => message;
+}
+
 class NetworkFailure extends Failure {
   const NetworkFailure(this.message);
   final String message;

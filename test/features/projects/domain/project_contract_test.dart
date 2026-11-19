@@ -1,13 +1,18 @@
 // Contract tests for Project / ProjectLimits against real backend JSON
 // (test/fixtures/projects_list.json, projects_limits.json), produced by the
 // real FastAPI app: GET /projects (one deleted project created and deleted
-// before the call) and GET /projects/limits.
+// before the call) and GET /projects/limits. The mutation fixtures
+// (project_created/updated, project_limit_409, project_*_422) come from the
+// same app: POST 201, PATCH 200 (title/status set, description/target
+// cleared), POST 409 with the limit full, POST and PATCH 422 with
+// target_date before start_date.
 
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:varys/features/projects/domain/project.dart';
+import 'package:varys/features/projects/domain/project_form.dart';
 
 dynamic _read(String name) => jsonDecode(File('test/fixtures/$name').readAsStringSync());
 
@@ -113,6 +118,64 @@ void main() {
       expect(limits.activeCount, projects.where((p) => p.status == ProjectStatus.active).length);
       expect(ProjectLimits.fromJson(limits.toJson()), limits);
       expect(limits.toJson(), {'max_active': 3, 'active_count': 2});
+    });
+  });
+
+  group('mutation responses', () {
+    test('POST /projects 201: every field; new project has no tasks -> progress null', () {
+      final raw = _read('project_created.json') as Map<String, dynamic>;
+      final p = Project.fromJson(raw);
+      expect(p.id, 1);
+      expect(p.title, 'Yeni proje');
+      expect(p.description, 'Açıklama metni');
+      expect(p.status, ProjectStatus.active);
+      expect(p.startDate, DateTime(2026, 11, 1));
+      expect(p.targetDate, DateTime(2026, 12, 15));
+      expect((p.totalTasks, p.doneTasks), (0, 0));
+      expect(raw.containsKey('progress_percent'), isTrue);
+      expect(p.progressPercent, isNull);
+      expect(Project.fromJson(p.toJson()), p);
+    });
+
+    test('PATCH 200: cleared fields come back as explicit null, set ones updated', () {
+      final raw = _read('project_updated.json') as Map<String, dynamic>;
+      final p = Project.fromJson(raw);
+      expect(p.title, 'Yeni proje (güncel)');
+      expect(p.status, ProjectStatus.onHold);
+      expect(raw.containsKey('description'), isTrue);
+      expect(p.description, isNull);
+      expect(raw.containsKey('target_date'), isTrue);
+      expect(p.targetDate, isNull);
+      expect(p.startDate, DateTime(2026, 11, 1));
+    });
+
+    test('409 body is exactly the fixed limit code', () {
+      expect(_read('project_limit_409.json'), {'detail': 'active_project_limit_reached'});
+    });
+
+    test('POST 422 (target before start) is a pydantic error list', () {
+      final body = _read('project_invalid_dates_422.json') as Map<String, dynamic>;
+      final detail = body['detail'] as List;
+      expect(detail, hasLength(1));
+      expect((detail.single as Map)['type'], 'value_error');
+      expect((detail.single as Map)['msg'], contains('target_date cannot be before start_date'));
+    });
+
+    test('PATCH 422 (merged dates invalid) is a plain string detail', () {
+      expect(_read('project_update_422.json'), {
+        'detail': 'target_date cannot be before start_date',
+      });
+    });
+
+    test('status wire values equal the JSON values', () {
+      for (final status in ProjectStatus.values) {
+        final json = Project.fromJson({
+          ...(_read('project_created.json') as Map<String, dynamic>),
+          'status': status.apiValue,
+        }).toJson();
+        expect(json['status'], status.apiValue);
+      }
+      expect(projectStatusLabels.keys, ProjectStatus.values);
     });
   });
 }

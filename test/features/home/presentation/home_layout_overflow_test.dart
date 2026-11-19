@@ -710,7 +710,7 @@ void main() {
     }
   });
 
-  group('/projects skeleton page has no overflow', () {
+  group('/projects page opened from Home has no overflow', () {
     for (final textScale in _textScales) {
       testWidgets('width 360px, textScale $textScale (opened from the Home card)', (tester) async {
         await pumpApp(tester, 360, textScale: textScale);
@@ -727,7 +727,7 @@ void main() {
         expect(find.byType(ProjectsScreen), findsOneWidget);
         expect(find.byType(NavigationBar), findsNothing, reason: 'outside the shell');
         expect(find.text(ProjectsScreen.title), findsOneWidget);
-        final text = find.text(ProjectsScreen.placeholderText);
+        final text = find.byKey(const ValueKey('projects-section-active'));
         expect(text, findsOneWidget);
         final rect = tester.getRect(text);
         expect(rect.left, greaterThanOrEqualTo(0));

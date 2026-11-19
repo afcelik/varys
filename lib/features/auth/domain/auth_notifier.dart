@@ -12,6 +12,7 @@ import 'package:varys/features/planning/data/task_repository_impl.dart';
 import 'package:varys/features/planning/presentation/task_notifier.dart';
 import 'package:varys/features/projects/data/project_repository_impl.dart';
 import 'package:varys/features/projects/presentation/active_projects_notifier.dart';
+import 'package:varys/features/projects/presentation/projects_list_notifier.dart';
 import 'package:varys/features/routines/data/routine_repository_impl.dart';
 import 'package:varys/features/routines/presentation/routines_day_notifier.dart';
 import 'package:varys/features/routines/presentation/routines_list_notifier.dart';
@@ -57,6 +58,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     invalidate(routinesListProvider);
     invalidate(routineRepositoryProvider);
     invalidate(activeProjectsProvider);
+    invalidate(projectsListProvider);
     invalidate(projectRepositoryProvider);
   }
 

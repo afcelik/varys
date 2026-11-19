@@ -226,7 +226,7 @@ void main() {
 
     expect(find.byType(ProjectsScreen), findsOneWidget);
     expect(find.text(ProjectsScreen.title), findsOneWidget);
-    expect(find.text(ProjectsScreen.placeholderText), findsOneWidget);
+    expect(find.byKey(const ValueKey('projects-section-active')), findsOneWidget);
     expect(find.byType(NavigationBar), findsNothing);
     expect(find.byType(HomeScreen), findsNothing);
 

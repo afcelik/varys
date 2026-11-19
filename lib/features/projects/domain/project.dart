@@ -17,6 +17,17 @@ enum ProjectStatus {
   completed,
 }
 
+/// Backend wire value of a [ProjectStatus] (same as its `@JsonValue`), for
+/// query parameters and request bodies.
+extension ProjectStatusApi on ProjectStatus {
+  String get apiValue => switch (this) {
+    ProjectStatus.active => 'active',
+    ProjectStatus.onHold => 'on_hold',
+    ProjectStatus.someday => 'someday',
+    ProjectStatus.completed => 'completed',
+  };
+}
+
 /// A project as returned by `GET /projects` (backend ProjectRead), with
 /// progress over its non-deleted tasks.
 ///

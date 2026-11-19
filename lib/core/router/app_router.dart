@@ -11,6 +11,8 @@ import 'package:varys/features/home/presentation/focus_task_selection_page.dart'
 import 'package:varys/features/inbox/presentation/inbox_screen.dart';
 import 'package:varys/features/notes/presentation/notes_screen.dart';
 import 'package:varys/features/planning/presentation/planning_screen.dart';
+import 'package:varys/features/projects/domain/project.dart';
+import 'package:varys/features/projects/presentation/project_edit_screen.dart';
 import 'package:varys/features/projects/presentation/projects_screen.dart';
 import 'package:varys/features/routines/domain/routine.dart';
 import 'package:varys/features/routines/presentation/routine_edit_screen.dart';
@@ -41,6 +43,8 @@ class AppRouter {
   static const String routinesNewPath = '/routines/new';
   static const String routinesEditPath = '/routines/edit';
   static const String projectsPath = '/projects';
+  static const String projectsNewPath = '/projects/new';
+  static const String projectsEditPath = '/projects/edit';
 
   /// Router error page (unknown path) texts.
   static const String errorTitle = 'Sayfa bulunamadı';
@@ -144,13 +148,36 @@ class AppRouter {
             child: RoutinesScreen(),
           ),
         ),
-        // Projects page (skeleton for now): opened by push from the Home card.
+        // Projects page: opened by push from the Home card.
         GoRoute(
           path: projectsPath,
           name: 'projects',
           pageBuilder: (context, state) => const NoTransitionPage(
             child: ProjectsScreen(),
           ),
+        ),
+        // Project create form: needs no extra.
+        GoRoute(
+          path: projectsNewPath,
+          name: 'projects-new',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: ProjectEditScreen(),
+          ),
+        ),
+        // Project edit form: the Project must come as extra. Anything else
+        // shows an error page; no fallback to create and no redirect (a
+        // redirect on push adds a second /home).
+        GoRoute(
+          path: projectsEditPath,
+          name: 'projects-edit',
+          pageBuilder: (context, state) {
+            final extra = state.extra;
+            return NoTransitionPage(
+              child: extra is Project
+                  ? ProjectEditScreen(key: ValueKey('project-edit-${extra.id}'), project: extra)
+                  : const ProjectEditUnavailablePage(),
+            );
+          },
         ),
         // Create form: needs no extra.
         GoRoute(
