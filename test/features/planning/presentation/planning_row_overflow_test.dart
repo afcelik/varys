@@ -46,6 +46,8 @@ const _scales = [1.0, 1.5];
 
 final _longTitle = List.filled(40, 'Uzunbaşlıklıgörev').join(' ').substring(0, 255);
 final _longWord = 'P' * 255; // a project name with no break opportunity at all
+final _unbrokenTitle = 'G' * 255; // a task title with no break opportunity at all
+const _shortTitle = 'Kısa başlık';
 final _longDescription = List.filled(250, 'açıklama').join(' ').substring(0, 2000);
 
 /// Completed, with every subtitle part: long title, description, project 2
@@ -158,6 +160,32 @@ void main() {
     oneLine.dispose();
   }
 
+  /// Height of one line of the text at [finder] (same 'Ağ' reference as
+  /// [expectAtMostLines]).
+  double oneLineHeight(WidgetTester tester, Finder finder) {
+    final paragraph = tester.renderObject<RenderParagraph>(finder);
+    final oneLine = TextPainter(
+      text: TextSpan(text: 'Ağ', style: (paragraph.text as TextSpan).style),
+      textDirection: TextDirection.ltr,
+      textScaler: paragraph.textScaler,
+    )..layout();
+    final height = oneLine.height;
+    oneLine.dispose();
+    return height;
+  }
+
+  /// Lines the text at [finder] really draws, measured like [expectAtMostLines].
+  int drawnLines(WidgetTester tester, Finder finder) =>
+      (tester.getSize(finder).height / oneLineHeight(tester, finder)).round();
+
+  /// A long title is cut at exactly 2 drawn lines and ends with an ellipsis.
+  void expectClampedTitle(WidgetTester tester, Finder finder, String label) {
+    expect(drawnLines(tester, finder), 2, reason: '$label: drawn lines');
+    final paragraph = tester.renderObject<RenderParagraph>(finder);
+    expect(paragraph.didExceedMaxLines, isTrue, reason: '$label: text was cut');
+    expect(paragraph.overflow, TextOverflow.ellipsis, reason: '$label: cut with an ellipsis');
+  }
+
   for (final width in _widths) {
     for (final scale in _scales) {
       final label = '${width.toInt()}px x$scale';
@@ -185,6 +213,7 @@ void main() {
           expectTapTargets(tester, '$label completed');
           expectAtMostLines(tester, description, 2, '$label description');
           expectAtMostLines(tester, meta, 2, '$label meta');
+          expectAtMostLines(tester, title, 2, '$label title');
 
           final card = tester.getRect(
             find.descendant(of: find.byKey(const ValueKey(7)), matching: find.byType(Card)),
@@ -199,6 +228,67 @@ void main() {
             expect(r.left, greaterThanOrEqualTo(card.left - 0.5), reason: '$label: $what left');
             expect(r.right, lessThanOrEqualTo(card.right + 0.5), reason: '$label: $what right');
             expect(r.bottom, lessThanOrEqualTo(card.bottom + 0.5), reason: '$label: $what bottom');
+          }
+        });
+
+        testWidgets('long titles (unbroken 255, many words) clamped to 2 lines; row grows', (
+          tester,
+        ) async {
+          // Same description + meta line on every row; only the title differs.
+          Task row(int id, String title) =>
+              _completed.copyWith(id: id, title: title, status: TaskStatus.todo);
+          final cases = [(8, _unbrokenTitle), (9, _longTitle)];
+          when(() => taskRepo.getTasksByFilter(any())).thenAnswer(
+            (_) async => Right([row(7, _shortTitle), for (final (id, t) in cases) row(id, t)]),
+          );
+          // Tall view so all three rows are built and fully on screen.
+          await pumpPlanning(tester, Size(width, 2400), scale);
+
+          expectNoException(tester, '$label long titles');
+          expectTapTargets(tester, '$label long titles');
+
+          Finder inRow(int id, Finder f) =>
+              find.descendant(of: find.byKey(ValueKey(id)), matching: f);
+          Rect cardOf(int id) => tester.getRect(inRow(id, find.byType(Card)));
+
+          final shortTitle = inRow(7, find.text(_shortTitle));
+          final shortLines = drawnLines(tester, shortTitle);
+          expect(shortLines, inInclusiveRange(1, 2), reason: '$label short title lines');
+          final shortCard = cardOf(7);
+          expect(shortCard.height, greaterThanOrEqualTo(48), reason: '$label short row');
+
+          for (final (id, text) in cases) {
+            final what = '$label row $id';
+            final title = inRow(id, find.text(text));
+            final description = inRow(id, find.text(_longDescription));
+            final meta = find.byKey(ValueKey('task-meta-$id'));
+            expectClampedTitle(tester, title, what);
+            expectAtMostLines(tester, description, 2, '$what description');
+            expectAtMostLines(tester, meta, 2, '$what meta');
+
+            // The tile grows by exactly the extra title lines, no more.
+            final extra = (2 - shortLines) * oneLineHeight(tester, title);
+            final card = cardOf(id);
+            expect(
+              card.height,
+              inInclusiveRange(shortCard.height + extra - 0.5, shortCard.height + extra + 0.5),
+              reason: '$what: height vs the short-title row (+$extra)',
+            );
+            for (final (part, f) in [
+              ('title', title),
+              ('description', description),
+              ('meta', meta),
+            ]) {
+              final r = tester.getRect(f);
+              expect(r.left, greaterThanOrEqualTo(card.left - 0.5), reason: '$what: $part left');
+              expect(r.right, lessThanOrEqualTo(card.right + 0.5), reason: '$what: $part right');
+              expect(r.bottom, lessThanOrEqualTo(card.bottom + 0.5), reason: '$what: $part bottom');
+            }
+            expect(
+              tester.getRect(title).bottom,
+              lessThanOrEqualTo(tester.getRect(description).top + 0.5),
+              reason: '$what: title above the description',
+            );
           }
         });
 

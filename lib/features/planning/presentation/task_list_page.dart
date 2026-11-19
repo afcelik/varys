@@ -251,6 +251,8 @@ class _TaskTile extends StatelessWidget {
           ),
           title: Text(
             task.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: theme.textTheme.titleMedium?.copyWith(
               decoration: task.isCompleted ? TextDecoration.lineThrough : null,
               color: task.isCompleted

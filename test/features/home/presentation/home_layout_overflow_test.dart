@@ -18,6 +18,7 @@ import 'dart:io';
 
 import 'package:dartz/dartz.dart' hide Task;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -204,6 +205,39 @@ const _sayNoHint = 'Örn: Sosyal medya, gereksiz toplantılar...'; // say_no_car
 const _noTasksText = 'Bugün için görev yok'; // daily_tasks_card.dart _EmptyTasks
 const _planErrorTitle = 'Plan yüklenemedi'; // daily_plan_state_widgets.dart
 const _planRetryText = 'Tekrar Dene'; // daily_plan_state_widgets.dart
+
+/// Title clamp cases: an unbroken 255-char title, a 255-char many-word title
+/// and a short reference title.
+final _unbrokenTitle = 'G' * 255;
+final _manyWordsTitle = List.filled(40, 'Uzunbaşlıklıgörev').join(' ').substring(0, 255);
+const _shortTitle = 'Kısa başlık';
+
+/// Worst case plan, open tasks 1 (short), 2 (unbroken) and 4 (many words).
+DailyPlan _clampPlan() {
+  final plan = _worstCasePlan();
+  return plan.copyWith(
+    tasks: [
+      for (final t in plan.tasks)
+        switch (t.id) {
+          1 => t.copyWith(title: _shortTitle),
+          2 => t.copyWith(title: _unbrokenTitle),
+          4 => t.copyWith(title: _manyWordsTitle),
+          _ => t,
+        },
+    ],
+  );
+}
+
+/// Routines, open and without streak: 3 (short), 4 (unbroken), 2 (many words).
+List<RoutineDayItem> _clampRoutines() => [
+  for (final r in _routines())
+    switch (r.id) {
+      3 => r.copyWith(title: _shortTitle),
+      4 => r.copyWith(title: _unbrokenTitle),
+      2 => r.copyWith(title: _manyWordsTitle, currentStreak: 0),
+      _ => r,
+    },
+];
 
 const _widths = [360.0, 600.0, 800.0, 801.0, 1000.0, 1200.0, 1400.0, 1800.0];
 const _textScales = [1.0, 1.5];
@@ -485,6 +519,95 @@ void main() {
           expect(find.byType(DailyPlanLoading), findsOneWidget);
           expect(find.byType(DailyPlanError), findsNothing);
           expectNoPlanCards();
+        });
+      }
+    }
+  });
+
+  /// Height of one line of the text at [finder]: the same 'Ağ' TextPainter
+  /// reference as expectAtMostLines in the planning overflow tests.
+  double oneLineHeight(WidgetTester tester, Finder finder) {
+    final paragraph = tester.renderObject<RenderParagraph>(finder);
+    final oneLine = TextPainter(
+      text: TextSpan(text: 'Ağ', style: (paragraph.text as TextSpan).style),
+      textDirection: TextDirection.ltr,
+      textScaler: paragraph.textScaler,
+    )..layout();
+    final height = oneLine.height;
+    oneLine.dispose();
+    return height;
+  }
+
+  /// Lines the text at [finder] really draws.
+  int drawnLines(WidgetTester tester, Finder finder) =>
+      (tester.getSize(finder).height / oneLineHeight(tester, finder)).round();
+
+  group('Long task and routine titles are cut at 2 lines on Home', () {
+    for (final width in _widths) {
+      for (final textScale in _textScales) {
+        final label = 'width ${width.toInt()}px, textScale $textScale';
+
+        testWidgets('unbroken 255 and many-word titles, $label', (tester) async {
+          final plan = _clampPlan();
+          when(() => planRepo.getPlan(any())).thenAnswer((_) async => Right(plan));
+          when(() => taskRepo.getTasksByFilter(any())).thenAnswer((_) async => Right(plan.tasks));
+          when(
+            () => routineRepo.getRoutinesForDay(any()),
+          ).thenAnswer((_) async => Right(_clampRoutines()));
+          await pumpApp(tester, width, textScale: textScale);
+          expect(tester.takeException(), isNull, reason: label);
+
+          for (final card in [DailyTasksCard, RoutinesCard]) {
+            final what = '$label $card';
+            final cardRect = tester.getRect(find.byType(card));
+            Finder titleIn(String text) =>
+                find.descendant(of: find.byType(card), matching: find.text(text));
+            Rect rowOf(Finder title) =>
+                tester.getRect(find.ancestor(of: title, matching: find.byType(ListTile)));
+
+            final short = titleIn(_shortTitle);
+            final shortLines = drawnLines(tester, short);
+            expect(shortLines, inInclusiveRange(1, 2), reason: '$what short title lines');
+            final shortRow = rowOf(short);
+            expect(shortRow.height, greaterThanOrEqualTo(48), reason: '$what short row height');
+
+            for (final text in [_unbrokenTitle, _manyWordsTitle]) {
+              final title = titleIn(text);
+              final kind = text == _unbrokenTitle ? 'unbroken' : 'many words';
+              expect(drawnLines(tester, title), 2, reason: '$what $kind drawn lines');
+              final paragraph = tester.renderObject<RenderParagraph>(title);
+              expect(paragraph.didExceedMaxLines, isTrue, reason: '$what $kind was cut');
+              expect(paragraph.overflow, TextOverflow.ellipsis, reason: '$what $kind ellipsis');
+
+              // The row grows by at most the extra title lines (a dense
+              // ListTile's minimum height may absorb part of it).
+              final extra = (2 - shortLines) * oneLineHeight(tester, title);
+              final row = rowOf(title);
+              expect(
+                row.height,
+                inInclusiveRange(shortRow.height - 0.5, shortRow.height + extra + 0.5),
+                reason: '$what $kind: height vs the short-title row (+$extra)',
+              );
+              expect(row.height, greaterThanOrEqualTo(48), reason: '$what $kind row height');
+              final r = tester.getRect(title);
+              expect(r.left, greaterThanOrEqualTo(cardRect.left), reason: '$what $kind left');
+              expect(r.right, lessThanOrEqualTo(cardRect.right), reason: '$what $kind right');
+              expect(row.right, lessThanOrEqualTo(cardRect.right), reason: '$what $kind row');
+            }
+          }
+
+          // "Planlamadan ekle" keeps its full 48x48 tap target.
+          final addButton = find.ancestor(
+            of: find.descendant(
+              of: find.byType(DailyTasksCard),
+              matching: find.byTooltip('Planlamadan ekle'),
+            ),
+            matching: find.byType(IconButton),
+          );
+          expect(addButton, findsOneWidget);
+          final size = tester.getSize(addButton);
+          expect(size.width, greaterThanOrEqualTo(48), reason: label);
+          expect(size.height, greaterThanOrEqualTo(48), reason: label);
         });
       }
     }

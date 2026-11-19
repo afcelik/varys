@@ -177,6 +177,8 @@ class _TaskRowState extends ConsumerState<_TaskRow> {
         ),
         title: Text(
           widget.task.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: theme.textTheme.bodyLarge?.copyWith(
             decoration: isDone ? TextDecoration.lineThrough : null,
             color: isDone ? theme.colorScheme.onSurfaceVariant : theme.colorScheme.onSurface,

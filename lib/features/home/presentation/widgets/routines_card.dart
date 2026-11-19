@@ -147,6 +147,8 @@ class _RoutineRowState extends ConsumerState<_RoutineRow> {
         ),
         title: Text(
           item.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: theme.textTheme.bodyLarge?.copyWith(
             decoration: item.completed ? TextDecoration.lineThrough : null,
             color: item.completed
