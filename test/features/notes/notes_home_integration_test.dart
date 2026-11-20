@@ -9,6 +9,7 @@ import 'dart:async';
 
 import 'package:dartz/dartz.dart' hide Task;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -203,6 +204,56 @@ void main() {
     expect(projectRepo.activeCalls, projectCalls);
     expect(find.byType(ProjectsCard), findsOneWidget);
     expect(find.byType(RoutinesCard), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Markdown: "# Merhaba" typed in the form and saved → the /notes row and the Home '
+      'card show "Merhaba" in bold with no "#"; the card content still opens the edit page', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await tapAndSettle(tester, find.byKey(const ValueKey('random-note-add')));
+    await tapAndSettle(tester, find.byKey(const ValueKey('notes-empty-add')));
+    await tester.enterText(find.byKey(const ValueKey('note-title-field')), 'Selam');
+    await tester.enterText(find.byKey(const ValueKey('note-body-field')), '# Merhaba\n\nalt satır');
+    await tester.pumpAndSettle();
+    await tapAndSettle(tester, find.byKey(const ValueKey('note-save')));
+    expect(noteRepo.createBodies.single['body'], '# Merhaba\n\nalt satır');
+
+    /// Plain text and the style of the "Merhaba" run of a preview.
+    (String, TextStyle?) preview(Finder f) {
+      final paragraph = tester.renderObject<RenderParagraph>(f);
+      TextStyle? style;
+      paragraph.text.visitChildren((s) {
+        if (s is TextSpan && s.text == 'Merhaba') style = s.style;
+        return true;
+      });
+      return (paragraph.text.toPlainText(), style);
+    }
+
+    // /notes row.
+    final id = noteRepo.server.single.id;
+    final (rowText, rowStyle) = preview(find.byKey(ValueKey('note-body-$id')));
+    expect(rowText, 'Merhaba\nalt satır');
+    expect(rowStyle?.fontWeight, FontWeight.w600);
+    expect(find.textContaining('#'), findsNothing);
+
+    // Home card.
+    await back(tester);
+    expect(find.byType(HomeScreen), findsOneWidget);
+    final cardBody = inCard(find.byKey(const ValueKey('random-note-body')));
+    final (cardText, cardStyle) = preview(cardBody);
+    expect(cardText, 'Merhaba\nalt satır');
+    expect(cardStyle?.fontWeight, FontWeight.w600);
+    expect(inCard(find.textContaining('#')), findsNothing);
+
+    // A tap on the rendered body opens the edit page with the raw Markdown.
+    await tapAndSettle(tester, cardBody);
+    expect(find.byType(NoteEditScreen), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byKey(const ValueKey('note-body-field'))).controller!.text,
+      '# Merhaba\n\nalt satır',
+    );
     expect(tester.takeException(), isNull);
   });
 

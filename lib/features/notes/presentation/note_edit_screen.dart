@@ -6,9 +6,12 @@ import 'package:varys/core/errors/error_utils.dart';
 import 'package:varys/core/errors/failure.dart';
 import 'package:varys/core/router/app_router.dart';
 import 'package:varys/features/notes/data/note_repository_impl.dart';
+import 'package:varys/features/notes/domain/markdown_format.dart';
 import 'package:varys/features/notes/domain/note.dart';
 import 'package:varys/features/notes/domain/note_form.dart';
 import 'package:varys/features/notes/presentation/notes_list_notifier.dart';
+import 'package:varys/features/notes/presentation/widgets/markdown_toolbar.dart';
+import 'package:varys/features/notes/presentation/widgets/note_markdown.dart';
 import 'package:varys/features/notes/presentation/widgets/tag_input.dart';
 import 'package:varys/shared/widgets/back_arrow.dart';
 
@@ -22,8 +25,14 @@ final noteTagSuggestionsProvider = FutureProvider.autoDispose<List<String>>((ref
 });
 
 /// Create (`/notes/new`, [note] null) or edit (`/notes/edit`, [note] from
-/// `extra`) form: title, plain-text body (no Markdown rendering yet), tags,
-/// favorite.
+/// `extra`) form: title, Markdown body, tags, favorite.
+///
+/// The body has two tabs: "Yaz" (the text field with the [MarkdownToolbar]
+/// above it) and "Önizle" ([NoteMarkdown] full, toolbar hidden). A format
+/// button changes the text at the body's selection ([applyFormat]), keeps
+/// the field focused (the keyboard stays open) and counts as a change; a
+/// result over the length limit is refused with a snackbar and the text
+/// stays as it was. Switching tabs keeps the text and the selection.
 ///
 /// Kaydet sits in a fixed bottom bar (lifted above the keyboard; a floating
 /// snackbar is laid out above it). It is disabled while the form is invalid,
@@ -41,6 +50,9 @@ class NoteEditScreen extends ConsumerStatefulWidget {
   static const String bodyLabel = 'Not';
   static const String favoriteLabel = 'Favori';
   static const String saveText = 'Kaydet';
+  static const String writeTab = 'Yaz';
+  static const String previewTab = 'Önizle';
+  static const String previewEmpty = 'Önizlenecek bir şey yok';
 
   static String bodyCounter(String body) => '${body.runes.length} / $noteBodyMaxLength';
 
@@ -51,10 +63,15 @@ class NoteEditScreen extends ConsumerStatefulWidget {
 class _NoteEditScreenState extends ConsumerState<NoteEditScreen> {
   late final TextEditingController _title;
   late final TextEditingController _body;
+  final FocusNode _bodyFocus = FocusNode(debugLabel: 'note-body');
   late List<String> _tags;
   late bool _isFavorite;
   bool _titleTouched = false;
   bool _saving = false;
+  bool _previewing = false;
+
+  /// Body selection when "Önizle" was opened; put back on "Yaz".
+  TextSelection? _selectionBeforePreview;
 
   Note? get _original => widget.note;
 
@@ -72,7 +89,40 @@ class _NoteEditScreenState extends ConsumerState<NoteEditScreen> {
   void dispose() {
     _title.dispose();
     _body.dispose();
+    _bodyFocus.dispose();
     super.dispose();
+  }
+
+  void _applyFormat(MarkdownFormat format) {
+    final result = applyFormat(_body.text, _body.selection, format);
+    if (result == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(markdownFormatLimitMessage),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    setState(() {
+      _body.value = TextEditingValue(text: result.text, selection: result.selection);
+    });
+    _bodyFocus.requestFocus();
+  }
+
+  void _setPreviewing(bool previewing) {
+    if (previewing == _previewing) return;
+    if (previewing) {
+      _selectionBeforePreview = _body.selection;
+      setState(() => _previewing = true);
+      return;
+    }
+    setState(() => _previewing = false);
+    final saved = _selectionBeforePreview;
+    if (saved != null && saved.isValid && saved.end <= _body.text.length) {
+      _body.selection = saved;
+    }
+    _bodyFocus.requestFocus();
   }
 
   bool get _valid => isNoteFormValid(title: _title.text, body: _body.text, tags: _tags);
@@ -152,25 +202,34 @@ class _NoteEditScreenState extends ConsumerState<NoteEditScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              TextField(
-                key: const ValueKey('note-body-field'),
-                controller: _body,
-                enabled: !_saving,
-                keyboardType: TextInputType.multiline,
-                minLines: 5,
-                maxLines: 15,
-                onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                  labelText: NoteEditScreen.bodyLabel,
-                  alignLabelWithHint: true,
-                  errorText: bodyError,
-                  errorMaxLines: 2,
-                  counter: Text(
-                    NoteEditScreen.bodyCounter(_body.text),
-                    key: const ValueKey('note-body-counter'),
+              _BodyTabs(previewing: _previewing, onChanged: _setPreviewing),
+              const SizedBox(height: 8),
+              if (_previewing)
+                _BodyPreview(text: _body.text)
+              else ...[
+                MarkdownToolbar(enabled: !_saving, onFormat: _applyFormat),
+                const SizedBox(height: 8),
+                TextField(
+                  key: const ValueKey('note-body-field'),
+                  controller: _body,
+                  focusNode: _bodyFocus,
+                  enabled: !_saving,
+                  keyboardType: TextInputType.multiline,
+                  minLines: 5,
+                  maxLines: 15,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    labelText: NoteEditScreen.bodyLabel,
+                    alignLabelWithHint: true,
+                    errorText: bodyError,
+                    errorMaxLines: 2,
+                    counter: Text(
+                      NoteEditScreen.bodyCounter(_body.text),
+                      key: const ValueKey('note-body-counter'),
+                    ),
                   ),
                 ),
-              ),
+              ],
               const SizedBox(height: 16),
               TagInput(
                 tags: _tags,
@@ -205,6 +264,81 @@ class _NoteEditScreenState extends ConsumerState<NoteEditScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// "Yaz" / "Önizle" switch above the body (each segment at least 48 high).
+class _BodyTabs extends StatelessWidget {
+  const _BodyTabs({required this.previewing, required this.onChanged});
+
+  final bool previewing;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFieldTapRegion(
+      child: SegmentedButton<bool>(
+        key: const ValueKey('note-body-tabs'),
+        segments: const [
+          ButtonSegment(
+            value: false,
+            icon: Icon(Icons.edit_outlined),
+            label: Text(
+              NoteEditScreen.writeTab,
+              key: ValueKey('note-tab-write'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          ButtonSegment(
+            value: true,
+            icon: Icon(Icons.visibility_outlined),
+            label: Text(
+              NoteEditScreen.previewTab,
+              key: ValueKey('note-tab-preview'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+        selected: {previewing},
+        showSelectedIcon: false,
+        onSelectionChanged: (s) => onChanged(s.single),
+        style: const ButtonStyle(
+          minimumSize: WidgetStatePropertyAll(Size(48, 48)),
+          tapTargetSize: MaterialTapTargetSize.padded,
+        ),
+      ),
+    );
+  }
+}
+
+/// The body rendered as Markdown, or "Önizlenecek bir şey yok" when blank.
+class _BodyPreview extends StatelessWidget {
+  const _BodyPreview({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      key: const ValueKey('note-body-preview'),
+      constraints: const BoxConstraints(minHeight: 120),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: text.trim().isEmpty
+          ? Text(
+              NoteEditScreen.previewEmpty,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            )
+          : NoteMarkdown(data: text, mode: NoteMarkdownMode.full),
     );
   }
 }

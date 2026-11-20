@@ -127,13 +127,23 @@ void main() {
   int drawnLines(WidgetTester tester, Finder finder) =>
       (tester.getSize(finder).height / oneLineHeight(tester, finder)).round();
 
+  /// Styles of the body preview's runs, by their text.
+  Map<String, TextStyle> previewSpans(WidgetTester tester) {
+    final out = <String, TextStyle>{};
+    tester.renderObject<RenderParagraph>(bodyKey).text.visitChildren((s) {
+      if (s is TextSpan && s.text != null) out[s.text!] = s.style ?? const TextStyle();
+      return true;
+    });
+    return out;
+  }
+
   void expectTapTarget(WidgetTester tester, Finder f, String what) {
     final size = tester.getSize(f);
     expect(size.width, greaterThanOrEqualTo(48), reason: '$what width');
     expect(size.height, greaterThanOrEqualTo(48), reason: '$what height');
   }
 
-  testWidgets('filled: title, plain-text body, tags; asks for the local day', (tester) async {
+  testWidgets('filled: title, Markdown body preview, tags; asks for the local day', (tester) async {
     // A single note is always the note of the day.
     repo.server = [fixture.firstWhere((n) => n.id == 1)];
     await pumpCard(tester);
@@ -142,8 +152,9 @@ void main() {
     expect(RandomNoteCard.title, 'Günün Notu');
     expect(find.text('Rastgele Not'), findsNothing);
     expect(inCard(find.text('İş toplantısı notları')), findsOneWidget);
+    // Markdown: the soft line break inside the paragraph is a space.
     expect(
-      inCard(find.text('Pazartesi sunumu hazırla.\nBütçe tablosunu güncelle.')),
+      inCard(find.text('Pazartesi sunumu hazırla. Bütçe tablosunu güncelle.')),
       findsOneWidget,
     );
     expect(inCard(find.text('iş')), findsOneWidget);
@@ -153,10 +164,36 @@ void main() {
     expectTapTarget(tester, find.byKey(const ValueKey('random-note-more')), 'Daha fazla');
   });
 
-  testWidgets('Markdown marks are shown as typed (no rendering yet)', (tester) async {
+  testWidgets('Markdown is rendered: marks hidden, heading and bold in bold, italic', (
+    tester,
+  ) async {
     repo.server = [fixture.first.copyWith(body: '# Başlık\n**kalın** ve _italik_')];
     await pumpCard(tester);
-    expect(inCard(find.text('# Başlık\n**kalın** ve _italik_')), findsOneWidget);
+    expect(inCard(find.text('Başlık\nkalın ve italik')), findsOneWidget);
+    expect(find.textContaining('#'), findsNothing);
+    expect(find.textContaining('**'), findsNothing);
+    final spans = previewSpans(tester);
+    expect(spans['Başlık']!.fontWeight, FontWeight.w600);
+    expect(spans['kalın']!.fontWeight, FontWeight.w600);
+    expect(spans['italik']!.fontStyle, FontStyle.italic);
+    expect(spans[' ve ']!.fontWeight, isNull);
+  });
+
+  testWidgets('the body preview is not selectable and has no tap handler of its own', (
+    tester,
+  ) async {
+    repo.server = [
+      fixture.first.copyWith(body: '[site](https://ornek.com) ve [x](javascript:alert(1))'),
+    ];
+    await pumpCard(tester);
+    expect(inCard(find.text('site ve x')), findsOneWidget, reason: 'link text only');
+    expect(inCard(find.byType(SelectionArea)), findsNothing);
+    expect(inCard(find.byType(SelectableText)), findsNothing);
+    final paragraph = tester.renderObject<RenderParagraph>(bodyKey);
+    paragraph.text.visitChildren((s) {
+      expect((s as TextSpan).recognizer, isNull, reason: 'span "${s.text}"');
+      return true;
+    });
   });
 
   testWidgets('body null: only the title (no body text)', (tester) async {
@@ -286,6 +323,29 @@ void main() {
       expect(find.text('iş'), findsWidgets);
     });
 
+    testWidgets('tapping the body preview text opens the edit page', (tester) async {
+      final note = fixture.first.copyWith(body: '# Merhaba\n\n**kalın** metin');
+      repo.server = [note];
+      await pumpCard(tester);
+      expect(bodyKey.hitTestable(), findsOneWidget);
+      await tester.tap(bodyKey);
+      await tester.pumpAndSettle();
+      expect(find.byType(NoteEditScreen), findsOneWidget);
+      expect(editExtras, [note]);
+    });
+
+    testWidgets('a link in the card is not followed: a tap on it opens the edit page', (
+      tester,
+    ) async {
+      final note = fixture.first.copyWith(body: '[tıkla](javascript:alert(1))');
+      repo.server = [note];
+      await pumpCard(tester);
+      await tester.tap(inCard(find.text('tıkla')));
+      await tester.pumpAndSettle();
+      expect(find.byType(NoteEditScreen), findsOneWidget);
+      expect(editExtras, [note]);
+    });
+
     testWidgets('tapping the title text itself also opens the edit page', (tester) async {
       repo.server = [fixture.firstWhere((n) => n.id == 1)];
       await pumpCard(tester);
@@ -381,5 +441,42 @@ void main() {
       expect(drawnLines(tester, bodyKey), 3);
       expect(inCard(find.text('+5')), findsOneWidget);
     });
+
+    testWidgets('Markdown body (wide table, code, 255 unbroken line, heading) ≤ 3 lines, '
+        '${width.toInt()}px x$scale', (tester) async {
+      tester.platformDispatcher.textScaleFactorTestValue = scale;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      repo.server = [
+        fixture.first.copyWith(
+          title: fixture.firstWhere((n) => n.id == 2).title,
+          body: _markdownWorstBody,
+        ),
+      ];
+      await pumpCard(tester, width: width);
+      expect(tester.takeException(), isNull);
+      expect(drawnLines(tester, titleKey), 2);
+      expect(drawnLines(tester, bodyKey), RandomNoteCard.bodyMaxLines);
+      expect(tester.renderObject<RenderParagraph>(bodyKey).didExceedMaxLines, isTrue);
+      final shown = tester.renderObject<RenderParagraph>(bodyKey).text.toPlainText();
+      for (final mark in ['|', '```', '# ']) {
+        expect(shown, isNot(contains(mark)), reason: mark);
+      }
+    });
   }
 }
+
+/// Wide table first, then a long code line, a 255 character line without
+/// spaces and a heading: the worst blocks land in the visible lines.
+final String _markdownWorstBody = [
+  '| ${List.generate(8, (i) => 'Sütun başlığı $i').join(' | ')} |',
+  '| ${List.filled(8, '---').join(' | ')} |',
+  '| ${List.generate(8, (i) => 'uzun hücre içeriği $i').join(' | ')} |',
+  '',
+  '```',
+  'kod' * 120,
+  '```',
+  '',
+  'ş' * 255,
+  '',
+  '# Başlık',
+].join('\n');

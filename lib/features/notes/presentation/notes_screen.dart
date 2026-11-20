@@ -6,6 +6,7 @@ import 'package:varys/core/router/app_router.dart';
 import 'package:varys/features/notes/domain/note.dart';
 import 'package:varys/features/notes/domain/note_form.dart';
 import 'package:varys/features/notes/presentation/notes_list_notifier.dart';
+import 'package:varys/features/notes/presentation/widgets/note_markdown.dart';
 import 'package:varys/features/notes/presentation/widgets/note_tag_chips.dart';
 import 'package:varys/shared/widgets/back_arrow.dart';
 
@@ -13,7 +14,9 @@ import 'package:varys/shared/widgets/back_arrow.dart';
 ///
 /// Every note is loaded once ([notesListProvider]); search, "Favoriler" and
 /// the tag chips filter on the client ([notesFilterProvider], [filterNotes])
-/// and send no request. A row opens the edit form; its star toggles the
+/// and send no request (the search matches the raw Markdown text). A row
+/// shows the body as a 2 line Markdown preview ([NoteMarkdown] list) and
+/// opens the edit form; its star toggles the
 /// favorite (not optimistic: the row waits for the server); its delete
 /// button asks first. States: loading (skeleton), error with "Tekrar dene",
 /// no notes, no match for the filters, list.
@@ -37,7 +40,7 @@ class NotesScreen extends ConsumerStatefulWidget {
   static const String deleteCancelText = 'Vazgeç';
 
   static const int titleMaxLines = 2;
-  static const int bodyMaxLines = 2;
+  static const int bodyMaxLines = NoteMarkdown.listMaxLines;
 
   /// Tag chip label width limit, so one long tag never fills the row.
   static const double tagChipMaxWidth = 220;
@@ -342,14 +345,10 @@ class _NoteRow extends StatelessWidget {
                     ),
                     if (body != null) ...[
                       const SizedBox(height: 4),
-                      Text(
-                        body,
+                      NoteMarkdown(
                         key: ValueKey('note-body-${note.id}'),
-                        maxLines: NotesScreen.bodyMaxLines,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
+                        data: body,
+                        mode: NoteMarkdownMode.list,
                       ),
                     ],
                     if (note.tags.isNotEmpty) ...[

@@ -260,6 +260,23 @@ Note _worstCaseNote() {
       );
 }
 
+/// Markdown body for the card: a wide table first, then a long code line, a
+/// 255-character line without spaces and a heading, so the worst blocks are
+/// in the visible lines.
+final String _markdownCardBody = [
+  '| ${List.generate(8, (i) => 'Sütun başlığı $i').join(' | ')} |',
+  '| ${List.filled(8, '---').join(' | ')} |',
+  '| ${List.generate(8, (i) => 'uzun hücre içeriği $i').join(' | ')} |',
+  '',
+  '```',
+  'kod' * 120,
+  '```',
+  '',
+  'ş' * 255,
+  '',
+  '# Başlık',
+].join('\n');
+
 const _widths = [360.0, 600.0, 800.0, 801.0, 1000.0, 1200.0, 1400.0, 1800.0];
 const _textScales = [1.0, 1.5];
 
@@ -898,6 +915,27 @@ void main() {
             expect(r.left, greaterThanOrEqualTo(cardRect.left), reason: label);
             expect(r.right, lessThanOrEqualTo(cardRect.right), reason: label);
           }
+        });
+
+        testWidgets('filled with a Markdown body (table, code, 255 unbroken line), $label', (
+          tester,
+        ) async {
+          noteRepo.server = [_worstCaseNote().copyWith(body: _markdownCardBody)];
+          await pumpApp(tester, width, textScale: textScale);
+          expect(tester.takeException(), isNull, reason: label);
+          expectCardFrame(tester, label);
+          expect(drawnLines(tester, title), RandomNoteCard.titleMaxLines, reason: '$label title');
+          expect(drawnLines(tester, body), RandomNoteCard.bodyMaxLines, reason: '$label body');
+          expect(tester.renderObject<RenderParagraph>(body).didExceedMaxLines, isTrue);
+          final shown = tester.renderObject<RenderParagraph>(body).text.toPlainText();
+          for (final mark in ['|', '```', '# ']) {
+            expect(shown, isNot(contains(mark)), reason: '$label $mark');
+          }
+          expect(tester.getSize(open).height, greaterThanOrEqualTo(48), reason: label);
+          final cardRect = tester.getRect(find.byType(RandomNoteCard));
+          final r = tester.getRect(body);
+          expect(r.left, greaterThanOrEqualTo(cardRect.left), reason: label);
+          expect(r.right, lessThanOrEqualTo(cardRect.right), reason: label);
         });
 
         testWidgets('empty, $label', (tester) async {

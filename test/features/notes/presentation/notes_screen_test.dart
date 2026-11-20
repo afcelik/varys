@@ -444,6 +444,71 @@ void main() {
     });
   });
 
+  group('Markdown body preview', () {
+    Finder body(int id) => find.byKey(ValueKey('note-body-$id'));
+
+    Map<String, TextStyle> spans(WidgetTester tester, int id) {
+      final out = <String, TextStyle>{};
+      tester.renderObject<RenderParagraph>(body(id)).text.visitChildren((s) {
+        if (s is TextSpan && s.text != null) out[s.text!] = s.style ?? const TextStyle();
+        return true;
+      });
+      return out;
+    }
+
+    testWidgets('marks hidden: heading and bold in bold, list bullet, link text only', (
+      tester,
+    ) async {
+      final note = fixture
+          .firstWhere((n) => n.id == 1)
+          .copyWith(body: '# Merhaba\n**kalın** [site](https://ornek.com)\n\n- madde');
+      repo.server = [note];
+      await pumpNotes(tester);
+      final shown = tester.renderObject<RenderParagraph>(body(1)).text.toPlainText();
+      expect(shown, 'Merhaba\nkalın site\n• madde');
+      for (final mark in ['#', '**', '](', 'https://']) {
+        expect(shown, isNot(contains(mark)), reason: mark);
+      }
+      expect(spans(tester, 1)['Merhaba']!.fontWeight, FontWeight.w600);
+      expect(spans(tester, 1)['kalın']!.fontWeight, FontWeight.w600);
+      expect(drawnLines(tester, body(1)), NotesScreen.bodyMaxLines);
+      expect(tester.renderObject<RenderParagraph>(body(1)).didExceedMaxLines, isTrue);
+    });
+
+    testWidgets('the preview has no tap handler and is not selectable', (tester) async {
+      repo.server = [
+        fixture.firstWhere((n) => n.id == 1).copyWith(body: '[x](javascript:alert(1)) metin'),
+      ];
+      await pumpNotes(tester);
+      tester.renderObject<RenderParagraph>(body(1)).text.visitChildren((s) {
+        expect((s as TextSpan).recognizer, isNull, reason: 'span "${s.text}"');
+        return true;
+      });
+      expect(find.descendant(of: row(1), matching: find.byType(SelectionArea)), findsNothing);
+      expect(find.descendant(of: row(1), matching: find.byType(SelectableText)), findsNothing);
+    });
+
+    testWidgets('tapping the body preview (a javascript: link text) opens the edit page', (
+      tester,
+    ) async {
+      final note = fixture.firstWhere((n) => n.id == 1).copyWith(body: '[tıkla](javascript:x)');
+      repo.server = [note];
+      await pumpNotes(tester);
+      await tester.tap(find.descendant(of: row(1), matching: find.text('tıkla')));
+      await tester.pumpAndSettle();
+      expect(find.byType(NoteEditScreen), findsOneWidget);
+      expect(tester.widget<NoteEditScreen>(find.byType(NoteEditScreen)).note!.id, 1);
+    });
+
+    testWidgets('search still matches the raw Markdown text', (tester) async {
+      repo.server = [fixture.firstWhere((n) => n.id == 1).copyWith(body: '**gizli** kelime')];
+      await pumpNotes(tester);
+      await tester.enterText(search, '**gizli');
+      await tester.pumpAndSettle();
+      expect(visibleIds(tester), [1]);
+    });
+  });
+
   group('rows at 360px x1.5', () {
     testWidgets('title and body preview drawn in at most 2 lines', (tester) async {
       await pumpNotes(tester, width: 360, textScale: 1.5);

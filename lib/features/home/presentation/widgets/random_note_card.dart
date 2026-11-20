@@ -5,11 +5,13 @@ import 'package:varys/core/errors/error_utils.dart';
 import 'package:varys/core/router/app_router.dart';
 import 'package:varys/features/notes/domain/note.dart';
 import 'package:varys/features/notes/presentation/today_note_notifier.dart';
+import 'package:varys/features/notes/presentation/widgets/note_markdown.dart';
 import 'package:varys/features/notes/presentation/widgets/note_tag_chips.dart';
 
 /// Home "Günün Notu" card with the note of the day ([todayNoteProvider]):
-/// title (2 lines), the first lines of the body as plain text (3 lines;
-/// Markdown marks are shown as typed), up to 3 tags and "+N". Tapping that
+/// title (2 lines), the first lines of the body rendered as Markdown
+/// ([NoteMarkdown] card: 3 lines, marks hidden, nothing tappable inside),
+/// up to 3 tags and "+N". Tapping that
 /// content (one InkWell, at least 48 high, semantics "Notu düzenle") pushes
 /// the note edit page with the Note as `extra`. No notes → "Henüz not yok"
 /// with "Not ekle". Loading and errors stay inside this card; "Tekrar dene"
@@ -27,7 +29,7 @@ class RandomNoteCard extends ConsumerWidget {
   static const String editSemantics = 'Notu düzenle';
 
   static const int titleMaxLines = 2;
-  static const int bodyMaxLines = 3;
+  static const int bodyMaxLines = NoteMarkdown.cardMaxLines;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -138,12 +140,10 @@ class _NoteContent extends StatelessWidget {
         ),
         if (body != null) ...[
           const SizedBox(height: 6),
-          Text(
-            body,
+          NoteMarkdown(
             key: const ValueKey('random-note-body'),
-            maxLines: RandomNoteCard.bodyMaxLines,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            data: body,
+            mode: NoteMarkdownMode.card,
           ),
         ],
         if (note.tags.isNotEmpty) ...[const SizedBox(height: 8), NoteTagChips(tags: note.tags)],

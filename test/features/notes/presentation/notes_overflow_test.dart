@@ -18,10 +18,12 @@ import 'package:varys/core/errors/error_utils.dart';
 import 'package:varys/core/errors/failure.dart';
 import 'package:varys/core/router/app_router.dart';
 import 'package:varys/features/notes/data/note_repository_impl.dart';
+import 'package:varys/features/notes/domain/markdown_format.dart';
 import 'package:varys/features/notes/domain/note.dart';
 import 'package:varys/features/notes/domain/note_form.dart';
 import 'package:varys/features/notes/presentation/note_edit_screen.dart';
 import 'package:varys/features/notes/presentation/notes_screen.dart';
+import 'package:varys/features/notes/presentation/widgets/markdown_toolbar.dart';
 import 'package:varys/features/notes/presentation/widgets/tag_input.dart';
 
 import '../../../helpers/varys_app_harness.dart';
@@ -41,6 +43,37 @@ const _serverError = ServerFailure(
 final _twentyTags = [
   for (var i = 0; i < maxTagsPerNote; i++) 'çok uzun etiket adı numara $i ${'ş' * (i % 10)}',
 ];
+
+/// Every Markdown block (headings, a 255 character line without spaces, a
+/// very wide table, a long code line, …), filled up to exactly 20000
+/// characters.
+final String _markdownBody = () {
+  final head = [
+    '# Birinci düzey başlık ${'uzun ' * 10}',
+    '## İkinci düzey',
+    '### Üçüncü düzey',
+    'ş' * 255,
+    '**kalın** *eğik* ~~çizik~~ `kod` [site](https://ornek.com)',
+    '- madde\n  - iç madde',
+    '1. bir\n2. iki',
+    '- [ ] yap\n- [x] bitti',
+    '> alıntı ${'söz ' * 30}',
+    '---',
+    [
+      '| ${List.generate(8, (i) => 'Sütun başlığı $i').join(' | ')} |',
+      '| ${List.filled(8, '---').join(' | ')} |',
+      '| ${List.generate(8, (i) => 'uzun hücre içeriği $i').join(' | ')} |',
+    ].join('\n'),
+    '```\n${'kod' * 120}\n```',
+    '![kedi](https://ornek.com/kedi.png)',
+  ].join('\n\n');
+  const filler = '\n\nöğrenim günlüğü, ışık ve çiçek üzerine bir paragraf.';
+  final buffer = StringBuffer(head);
+  while (buffer.length + filler.length <= noteBodyMaxLength) {
+    buffer.write(filler);
+  }
+  return buffer.toString().padRight(noteBodyMaxLength, '.');
+}();
 
 void main() {
   late FakeNoteRepository repo;
@@ -244,6 +277,25 @@ void main() {
           expect(tester.takeException(), isNull, reason: label);
         });
 
+        testWidgets('Markdown body row (table, code, 255 unbroken line), $label', (tester) async {
+          repo.server = [worst.copyWith(body: _markdownBody)];
+          await openNotes(tester, width, scale);
+          expect(tester.takeException(), isNull, reason: label);
+          final body = find.byKey(const ValueKey('note-body-2'));
+          await scrollToRow(tester, body);
+          expect(drawnLines(tester, body), NotesScreen.bodyMaxLines, reason: '$label body');
+          expect(tester.renderObject<RenderParagraph>(body).didExceedMaxLines, isTrue);
+          final shown = tester.renderObject<RenderParagraph>(body).text.toPlainText();
+          for (final mark in ['# ', '**', '```']) {
+            expect(shown, isNot(contains(mark)), reason: '$label $mark');
+          }
+          expect(drawnLines(tester, find.byKey(const ValueKey('note-title-2'))), 2);
+          expectInsideWindow(tester, find.byKey(const ValueKey('note-2')), width, label);
+          expectTapTarget(tester, find.byKey(const ValueKey('note-favorite-2')), '$label star');
+          expectTapTarget(tester, find.byKey(const ValueKey('note-delete-2')), '$label delete');
+          expect(tester.takeException(), isNull, reason: label);
+        });
+
         testWidgets('no notes, $label', (tester) async {
           repo.server = [];
           await openNotes(tester, width, scale);
@@ -323,6 +375,58 @@ void main() {
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull, reason: label);
           expectSaveReachable(tester, _height - _keyboard, label);
+        });
+
+        testWidgets('edit Yaz tab with the format toolbar, $label', (tester) async {
+          await openForm(tester, width, scale, note: worst);
+          expect(tester.takeException(), isNull, reason: label);
+          final toolbar = find.byKey(const ValueKey('note-format-toolbar'));
+          expect(toolbar, findsOneWidget);
+          expectInsideWindow(tester, toolbar, width, '$label toolbar');
+          for (final f in [MarkdownFormat.values.first, MarkdownFormat.values.last]) {
+            final b = find.byKey(MarkdownToolbar.buttonKey(f));
+            await tester.ensureVisible(b);
+            await tester.pump();
+            expectTapTarget(tester, b, '$label ${f.name}');
+            expectInsideWindow(tester, b, width, '$label ${f.name}');
+            expect(b.hitTestable(), findsOneWidget, reason: '$label ${f.name}');
+          }
+          for (final key in ['note-tab-write', 'note-tab-preview']) {
+            final tab = find.byKey(ValueKey(key));
+            expect(drawnLines(tester, tab), 1, reason: '$label $key lines');
+            expectTapTarget(
+              tester,
+              find.ancestor(of: tab, matching: find.byType(TextButton)),
+              '$label $key',
+            );
+          }
+          expectSaveReachable(tester, _height, label);
+          expect(tester.takeException(), isNull, reason: label);
+        });
+
+        testWidgets('edit Önizle tab, every block, 20000 characters, $label', (tester) async {
+          expect(_markdownBody.runes.length, noteBodyMaxLength);
+          await openForm(tester, width, scale, note: worst.copyWith(body: _markdownBody));
+          final previewTab = find.byKey(const ValueKey('note-tab-preview'));
+          await tester.ensureVisible(previewTab); // below the 255 title at 360px x1.5
+          await tester.pumpAndSettle();
+          expect(previewTab.hitTestable(), findsOneWidget, reason: '$label tab tappable');
+          await tester.tap(previewTab);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: label);
+          expect(find.byKey(const ValueKey('note-format-toolbar')), findsNothing);
+          final preview = find.byKey(const ValueKey('note-body-preview'));
+          expect(preview, findsOneWidget);
+          expectInsideWindow(tester, preview, width, '$label preview');
+          expectSaveReachable(tester, _height, label);
+          // Scroll through the whole preview: every block lays out.
+          await tester.drag(
+            find.byKey(const ValueKey('note-form-scroll')),
+            const Offset(0, -100000),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: label);
+          expectSaveReachable(tester, _height, '$label scrolled');
         });
 
         testWidgets('new with suggestions open, $label', (tester) async {

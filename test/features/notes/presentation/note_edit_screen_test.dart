@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dartz/dartz.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -8,10 +9,13 @@ import 'package:varys/core/errors/error_utils.dart';
 import 'package:varys/core/errors/failure.dart';
 import 'package:varys/core/router/app_router.dart';
 import 'package:varys/features/notes/data/note_repository_impl.dart';
+import 'package:varys/features/notes/domain/markdown_format.dart';
 import 'package:varys/features/notes/domain/note.dart';
 import 'package:varys/features/notes/domain/note_form.dart';
 import 'package:varys/features/notes/presentation/note_edit_screen.dart';
 import 'package:varys/features/notes/presentation/notes_screen.dart';
+import 'package:varys/features/notes/presentation/widgets/markdown_toolbar.dart';
+import 'package:varys/features/notes/presentation/widgets/note_markdown.dart';
 import 'package:varys/features/notes/presentation/widgets/tag_input.dart';
 
 import '../../../helpers/varys_app_harness.dart';
@@ -484,6 +488,306 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(repo.createBodies.single['title'], 'Doğrudan');
+    });
+  });
+
+  group('Markdown toolbar and preview', () {
+    // Notation: «…» is the body selection, ‸ a cursor (as in
+    // markdown_format_test.dart).
+    final toolbar = find.byKey(const ValueKey('note-format-toolbar'));
+    final preview = find.byKey(const ValueKey('note-body-preview'));
+    final writeTab = find.text(NoteEditScreen.writeTab);
+    final previewTab = find.text(NoteEditScreen.previewTab);
+    Finder formatButton(MarkdownFormat f) => find.byKey(MarkdownToolbar.buttonKey(f));
+
+    TextEditingController body(WidgetTester tester) =>
+        tester.widget<TextField>(bodyField).controller!;
+
+    bool bodyFocused(WidgetTester tester) =>
+        tester.widget<TextField>(bodyField).focusNode!.hasFocus;
+
+    String shown(WidgetTester tester) {
+      final c = body(tester);
+      final s = c.selection;
+      if (s.isCollapsed) return '${c.text.substring(0, s.start)}‸${c.text.substring(s.start)}';
+      return '${c.text.substring(0, s.start)}«${c.text.substring(s.start, s.end)}»'
+          '${c.text.substring(s.end)}';
+    }
+
+    /// Types the body (which focuses it) and sets the marked selection.
+    Future<void> setBody(WidgetTester tester, String marked) async {
+      final TextSelection selection;
+      final String text;
+      final cursor = marked.indexOf('‸');
+      if (cursor != -1) {
+        text = marked.replaceFirst('‸', '');
+        selection = TextSelection.collapsed(offset: cursor);
+      } else {
+        final start = marked.indexOf('«');
+        final end = marked.indexOf('»') - 1;
+        text = marked.replaceFirst('«', '').replaceFirst('»', '');
+        selection = TextSelection(baseOffset: start, extentOffset: end);
+      }
+      await tester.enterText(bodyField, text);
+      body(tester).selection = selection;
+      await tester.pump();
+      expect(bodyFocused(tester), isTrue, reason: 'body focused before the tap');
+    }
+
+    Future<void> tapFormat(WidgetTester tester, MarkdownFormat f) async {
+      await tester.ensureVisible(formatButton(f));
+      await tester.pump();
+      await tester.tap(formatButton(f));
+      await tester.pump();
+    }
+
+    const applied = {
+      MarkdownFormat.h1: '# «kelime»',
+      MarkdownFormat.h2: '## «kelime»',
+      MarkdownFormat.h3: '### «kelime»',
+      MarkdownFormat.bold: '**«kelime»**',
+      MarkdownFormat.italic: '*«kelime»*',
+      MarkdownFormat.strike: '~~«kelime»~~',
+      MarkdownFormat.inlineCode: '`«kelime»`',
+      MarkdownFormat.codeBlock: '```\n«kelime»\n```',
+      MarkdownFormat.bulletList: '- «kelime»',
+      MarkdownFormat.numberedList: '1. «kelime»',
+      MarkdownFormat.taskList: '- [ ] «kelime»',
+      MarkdownFormat.quote: '> «kelime»',
+      MarkdownFormat.rule: 'kelime\n\n---\n\n‸',
+      MarkdownFormat.link: '[kelime](«https://»)',
+      MarkdownFormat.table: 'kelime\n\n| «Başlık» | Başlık |\n| --- | --- |\n|  |  |\n\n',
+    };
+
+    test('the expectation table covers every format', () {
+      expect(applied.keys.toSet(), MarkdownFormat.values.toSet());
+    });
+
+    for (final f in MarkdownFormat.values) {
+      testWidgets('${f.name}: changes the body at the selection, keeps focus, enables Kaydet', (
+        tester,
+      ) async {
+        await openCreate(tester);
+        await tester.enterText(titleField, 'Not');
+        await setBody(tester, '«kelime»');
+        await tapFormat(tester, f);
+        expect(shown(tester), applied[f]);
+        expect(bodyFocused(tester), isTrue, reason: 'focus kept (keyboard stays open)');
+        expect(tester.testTextInput.isVisible, isTrue, reason: 'keyboard stays open');
+        expect(saveEnabled(tester), isTrue);
+        expect(find.text(NoteEditScreen.bodyCounter(body(tester).text)), findsOneWidget);
+      });
+    }
+
+    testWidgets(
+      'desktop mouse click on a format button keeps the body focused',
+      (tester) async {
+        await openCreate(tester);
+        await tester.tap(bodyField, kind: PointerDeviceKind.mouse);
+        await tester.enterText(bodyField, 'kelime');
+        body(tester).selection = const TextSelection(baseOffset: 0, extentOffset: 6);
+        await tester.pump();
+        for (final f in [MarkdownFormat.bold, MarkdownFormat.h1, MarkdownFormat.table]) {
+          await tester.ensureVisible(formatButton(f));
+          await tester.pump();
+          await tester.tap(formatButton(f), kind: PointerDeviceKind.mouse);
+          await tester.pump();
+          expect(bodyFocused(tester), isTrue, reason: '${f.name}: a click outside the field');
+        }
+        expect(body(tester).text, startsWith('# **kelime**'));
+      },
+      variant: const TargetPlatformVariant({TargetPlatform.macOS, TargetPlatform.linux}),
+    );
+
+    for (final f in [
+      MarkdownFormat.h1,
+      MarkdownFormat.h2,
+      MarkdownFormat.h3,
+      MarkdownFormat.bold,
+      MarkdownFormat.italic,
+      MarkdownFormat.strike,
+      MarkdownFormat.inlineCode,
+      MarkdownFormat.codeBlock,
+      MarkdownFormat.bulletList,
+      MarkdownFormat.numberedList,
+      MarkdownFormat.taskList,
+      MarkdownFormat.quote,
+    ]) {
+      testWidgets('${f.name}: a second tap removes it again', (tester) async {
+        await openCreate(tester);
+        await setBody(tester, '«kelime»');
+        await tapFormat(tester, f);
+        await tapFormat(tester, f);
+        expect(shown(tester), '«kelime»');
+        expect(bodyFocused(tester), isTrue);
+      });
+    }
+
+    testWidgets('a cursor (no selection) puts the marks around it', (tester) async {
+      await openCreate(tester);
+      await setBody(tester, 'ab‸cd');
+      await tapFormat(tester, MarkdownFormat.bold);
+      expect(shown(tester), 'ab**‸**cd');
+    });
+
+    testWidgets('a multi-line selection numbers every line', (tester) async {
+      await openCreate(tester);
+      await setBody(tester, '«süt\nekmek\nyumurta»');
+      await tapFormat(tester, MarkdownFormat.numberedList);
+      expect(shown(tester), '1. «süt\n2. ekmek\n3. yumurta»');
+    });
+
+    testWidgets('edit: a format is a change; Kaydet sends the new body', (tester) async {
+      final note = fixture.firstWhere((n) => n.id == 1).copyWith(body: 'eski');
+      repo = FakeNoteRepository([note]);
+      await openEdit(tester, note);
+      expect(saveEnabled(tester), isFalse);
+      await tester.tap(bodyField);
+      await tester.pump();
+      body(tester).selection = const TextSelection(baseOffset: 0, extentOffset: 4);
+      await tester.pump();
+      await tapFormat(tester, MarkdownFormat.bold);
+      expect(saveEnabled(tester), isTrue);
+      await tapSave(tester);
+      await tester.pumpAndSettle();
+      final (id, patch) = repo.updateCalls.single;
+      expect(id, 1);
+      expect(patch, {'body': '**eski**'});
+    });
+
+    testWidgets('a result over 20000 code points: message, text and selection unchanged', (
+      tester,
+    ) async {
+      await openCreate(tester);
+      final full = 'a' * noteBodyMaxLength;
+      await setBody(tester, '$full‸');
+      await tapFormat(tester, MarkdownFormat.bold);
+      expect(find.text(markdownFormatLimitMessage), findsOneWidget);
+      expect(body(tester).text, full);
+      expect(body(tester).selection, TextSelection.collapsed(offset: full.length));
+      expect(bodyFocused(tester), isTrue);
+    });
+
+    testWidgets('Yaz → Önizle → Yaz keeps text and selection; a format then applies there', (
+      tester,
+    ) async {
+      await openCreate(tester);
+      await setBody(tester, 'bir «iki» üç');
+      final before = body(tester).selection;
+      expect(find.byKey(const ValueKey('note-body-tabs')), findsOneWidget);
+
+      await tester.tap(previewTab);
+      await tester.pumpAndSettle();
+      expect(toolbar, findsNothing, reason: 'toolbar hidden in Önizle');
+      expect(bodyField, findsNothing);
+      expect(
+        find.descendant(of: preview, matching: find.text('bir iki üç', findRichText: true)),
+        findsOneWidget,
+      );
+
+      await tester.tap(writeTab);
+      await tester.pumpAndSettle();
+      expect(toolbar, findsOneWidget);
+      expect(body(tester).text, 'bir iki üç');
+      expect(body(tester).selection, before);
+      expect(bodyFocused(tester), isTrue);
+
+      await tapFormat(tester, MarkdownFormat.bold);
+      expect(shown(tester), 'bir **«iki»** üç');
+    });
+
+    testWidgets('Önizle renders Markdown: "# Merhaba" shows Merhaba without #', (tester) async {
+      await openCreate(tester);
+      await setBody(tester, '# Merhaba\n\n- madde‸');
+      await tester.tap(previewTab);
+      await tester.pumpAndSettle();
+      expect(find.descendant(of: preview, matching: find.byType(NoteMarkdown)), findsOneWidget);
+      expect(find.text('Merhaba', findRichText: true), findsOneWidget);
+      expect(find.textContaining('#', findRichText: true), findsNothing);
+      expect(find.text(NoteEditScreen.previewEmpty), findsNothing);
+    });
+
+    testWidgets('Önizle with an empty or blank body: "Önizlenecek bir şey yok"', (tester) async {
+      await openCreate(tester);
+      await tester.tap(previewTab);
+      await tester.pumpAndSettle();
+      expect(find.text(NoteEditScreen.previewEmpty), findsOneWidget);
+      expect(find.byType(NoteMarkdown), findsNothing);
+
+      await tester.tap(writeTab);
+      await tester.pumpAndSettle();
+      await setBody(tester, '   \n  ‸');
+      await tester.tap(previewTab);
+      await tester.pumpAndSettle();
+      expect(find.text(NoteEditScreen.previewEmpty), findsOneWidget);
+    });
+
+    testWidgets('360px x1.5: 15 buttons, each 48x48 with its Turkish tooltip, both ends reachable '
+        'and fully visible by scrolling; the tabs are 48 high', (tester) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await openCreate(tester, size: const Size(360, 800));
+      expect(
+        find.descendant(of: toolbar, matching: find.byType(IconButton)),
+        findsNWidgets(MarkdownFormat.values.length),
+      );
+      const expectedTooltips = [
+        'Başlık 1',
+        'Başlık 2',
+        'Başlık 3',
+        'Kalın',
+        'İtalik',
+        'Üstü çizili',
+        'Satır içi kod',
+        'Kod bloğu',
+        'Madde işaretli liste',
+        'Numaralı liste',
+        'Yapılacaklar listesi',
+        'Alıntı',
+        'Yatay çizgi',
+        'Bağlantı',
+        'Tablo',
+      ];
+      for (final (i, f) in MarkdownFormat.values.indexed) {
+        final b = formatButton(f);
+        await tester.ensureVisible(b);
+        await tester.pump();
+        expectTapTarget(tester, b, f.name);
+        expect(tester.widget<IconButton>(b).tooltip, expectedTooltips[i], reason: f.name);
+        final r = tester.getRect(b);
+        expect(r.left, greaterThanOrEqualTo(-0.5), reason: '${f.name} left');
+        expect(r.right, lessThanOrEqualTo(360.5), reason: '${f.name} right');
+        expect(b.hitTestable(), findsOneWidget, reason: '${f.name} tappable');
+      }
+      // The row really scrolls: the last button is past the first window.
+      final position = tester
+          .state<ScrollableState>(find.descendant(of: toolbar, matching: find.byType(Scrollable)))
+          .position;
+      expect(position.maxScrollExtent, greaterThan(0));
+      expect(position.pixels, position.maxScrollExtent);
+
+      for (final tab in [writeTab, previewTab]) {
+        final segment = find.ancestor(of: tab, matching: find.byType(TextButton));
+        await tester.ensureVisible(segment);
+        await tester.pump();
+        expectTapTarget(tester, segment, 'tab segment');
+      }
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('while saving the toolbar is disabled', (tester) async {
+      final pending = Completer<_NoteResult>();
+      repo.onCreate = (_) => pending.future;
+      await openCreate(tester);
+      await tester.enterText(titleField, 'Not');
+      await tester.pumpAndSettle();
+      await tapSave(tester);
+      await tester.pump();
+      for (final f in MarkdownFormat.values) {
+        expect(tester.widget<IconButton>(formatButton(f)).onPressed, isNull, reason: f.name);
+      }
+      pending.complete(Right(createdNoteFixture().copyWith(id: 100, title: 'Not')));
+      await tester.pumpAndSettle();
     });
   });
 }
