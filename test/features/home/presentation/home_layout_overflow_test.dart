@@ -39,6 +39,7 @@ import 'package:varys/features/home/presentation/focus_task_selection_page.dart'
 import 'package:varys/features/home/presentation/home_screen.dart';
 import 'package:varys/features/home/presentation/widgets/daily_plan_state_widgets.dart';
 import 'package:varys/features/home/presentation/widgets/daily_tasks_card.dart';
+import 'package:varys/features/home/presentation/widgets/eisenhower_card.dart';
 import 'package:varys/features/home/presentation/widgets/focus_cards.dart';
 import 'package:varys/features/home/presentation/widgets/inbox_card.dart';
 import 'package:varys/features/home/presentation/widgets/projects_card.dart';
@@ -48,6 +49,7 @@ import 'package:varys/features/home/presentation/widgets/say_no_card.dart';
 import 'package:varys/features/notes/data/note_repository_impl.dart';
 import 'package:varys/features/notes/domain/note.dart';
 import 'package:varys/features/planning/data/task_repository_impl.dart';
+import 'package:varys/features/planning/domain/eisenhower.dart';
 import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/features/planning/domain/task_repository.dart';
 import 'package:varys/features/projects/data/project_repository_impl.dart';
@@ -1270,4 +1272,147 @@ void main() {
       }
     });
   }
+
+  group('Öncelik Matrisi card states have no overflow on Home', () {
+    Finder inCard(Finder f) => find.descendant(of: find.byType(EisenhowerCard), matching: f);
+    Finder quadrant(EisenhowerQuadrant q) =>
+        inCard(find.byKey(ValueKey('eisenhower-quadrant-${q.pathSegment}')));
+
+    /// Real GET /tasks with the worst case on top: an unbroken 255-character
+    /// title (newest, "Hemen yap") and 5 long-titled tasks per quadrant, so
+    /// every quadrant shows 3 titles and "+N".
+    List<Task> worstCaseTasks() {
+      final base =
+          (jsonDecode(File('test/fixtures/tasks_eisenhower.json').readAsStringSync()) as List)
+              .cast<Map<String, dynamic>>()
+              .map(Task.fromJson)
+              .toList();
+      return [
+        base.first.copyWith(
+          id: 900,
+          title: 'Ş' * 255,
+          status: TaskStatus.todo,
+          createdAt: DateTime(2026, 12, 1),
+        ),
+        for (final t in base.where((t) => t.status != TaskStatus.done))
+          for (var i = 0; i < 5; i++)
+            t.copyWith(
+              id: t.id * 100 + i,
+              title: '${t.title}: çok uzun açıklamalı bir başlık, ayrıntılar ve notlar $i',
+            ),
+        ...base,
+      ];
+    }
+
+    void expectCardFrame(WidgetTester tester, double width, String label) {
+      expectShell(width);
+      final title = inCard(find.byKey(const ValueKey('eisenhower-title')));
+      expect(title, findsOneWidget, reason: label);
+      expect(drawnLines(tester, title), 1, reason: '$label card title');
+      final card = tester.getRect(find.byType(EisenhowerCard));
+      expect(card.left, greaterThanOrEqualTo(0), reason: label);
+      expect(card.right, lessThanOrEqualTo(width), reason: label);
+    }
+
+    for (final width in _widths) {
+      for (final textScale in _textScales) {
+        final label = 'width ${width.toInt()}px, textScale $textScale';
+
+        testWidgets('filled (255 unbroken title, many tasks), $label', (tester) async {
+          final tasks = worstCaseTasks();
+          when(() => taskRepo.getTasksByFilter(any())).thenAnswer((_) async => Right(tasks));
+          await pumpApp(tester, width, textScale: textScale);
+          expect(tester.takeException(), isNull, reason: label);
+          expectCardFrame(tester, width, label);
+
+          final long = inCard(find.byKey(const ValueKey('eisenhower-task-900')));
+          expect(long, findsOneWidget, reason: '$label long title drawn');
+          for (final q in EisenhowerQuadrant.values) {
+            final seg = q.pathSegment;
+            final tile = quadrant(q);
+            expectTapTarget(tester, tile, '$label ${q.name}');
+            final rect = tester.getRect(tile);
+            expect(rect.right, lessThanOrEqualTo(width), reason: '$label ${q.name}');
+            // Name and subtitle as text (told apart without colour), 1 line each.
+            final name = inCard(find.byKey(ValueKey('eisenhower-name-$seg')));
+            expect(tester.widget<Text>(name).data, q.title);
+            expect(drawnLines(tester, name), 1, reason: '$label ${q.name} name');
+            final sub = inCard(find.byKey(ValueKey('eisenhower-subtitle-$seg')));
+            expect(drawnLines(tester, sub), 1, reason: '$label ${q.name} subtitle');
+            // Exactly 3 titles, each 1 line and inside its quadrant, then "+N".
+            final titles = find.descendant(
+              of: tile,
+              matching: find.byWidgetPredicate(
+                (w) =>
+                    w is Text &&
+                    (w.key is ValueKey<String>) &&
+                    (w.key! as ValueKey<String>).value.startsWith('eisenhower-task-'),
+              ),
+            );
+            expect(titles, findsNWidgets(EisenhowerCard.maxTitles), reason: '$label ${q.name}');
+            for (final e in titles.evaluate()) {
+              final f = find.byWidget(e.widget);
+              expect((e.widget as Text).maxLines, 1);
+              expect(drawnLines(tester, f), 1, reason: '$label ${q.name} task title');
+              expect(tester.getRect(f).right, lessThanOrEqualTo(rect.right + 0.5));
+            }
+            expect(
+              find.descendant(of: tile, matching: find.byKey(ValueKey('eisenhower-more-$seg'))),
+              findsOneWidget,
+              reason: '$label ${q.name} +N',
+            );
+          }
+          expect(inCard(find.text(EisenhowerCard.emptyText)), findsNothing);
+        });
+
+        testWidgets('empty (only done tasks), $label', (tester) async {
+          final done =
+              (jsonDecode(File('test/fixtures/tasks_eisenhower.json').readAsStringSync()) as List)
+                  .cast<Map<String, dynamic>>()
+                  .map(Task.fromJson)
+                  .where((t) => t.status == TaskStatus.done)
+                  .toList();
+          when(() => taskRepo.getTasksByFilter(any())).thenAnswer((_) async => Right(done));
+          await pumpApp(tester, width, textScale: textScale);
+          expect(tester.takeException(), isNull, reason: label);
+          expectCardFrame(tester, width, label);
+          expect(inCard(find.text(EisenhowerCard.emptyText)), findsOneWidget);
+          expect(quadrant(EisenhowerQuadrant.doNow), findsNothing);
+        });
+
+        testWidgets('loading (no pumpAndSettle), $label', (tester) async {
+          final pending = Completer<Either<Failure, List<Task>>>();
+          addTearDown(() {
+            if (!pending.isCompleted) pending.complete(const Right([]));
+          });
+          when(() => taskRepo.getTasksByFilter(any())).thenAnswer((_) => pending.future);
+          await pumpApp(tester, width, textScale: textScale, settle: false);
+          // Let the shell (side rail) finish animating; the request stays pending.
+          await tester.pump(const Duration(seconds: 1));
+          expect(tester.takeException(), isNull, reason: label);
+          expectCardFrame(tester, width, label);
+          expect(inCard(find.byKey(const ValueKey('eisenhower-loading'))), findsOneWidget);
+          expect(inCard(find.text(EisenhowerCard.emptyText)), findsNothing);
+          // The rest of Home is drawn meanwhile.
+          expect(find.byType(RoutinesCard), findsOneWidget);
+          expect(find.byType(ProjectsCard), findsOneWidget);
+        });
+
+        testWidgets('error, $label', (tester) async {
+          const failure = NetworkFailure('timeout');
+          when(() => taskRepo.getTasksByFilter(any())).thenAnswer((_) async => const Left(failure));
+          await pumpApp(tester, width, textScale: textScale);
+          expect(tester.takeException(), isNull, reason: label);
+          expectCardFrame(tester, width, label);
+          expect(inCard(find.text(userMessage(failure))), findsOneWidget);
+          expect(inCard(find.text(EisenhowerCard.emptyText)), findsNothing);
+          expectTapTarget(tester, inCard(find.byKey(const ValueKey('eisenhower-retry'))), label);
+          // Only this card is in error; the rest of Home still works.
+          expect(find.byType(DailyTasksCard), findsOneWidget);
+          expect(find.text(_routineTitle), findsOneWidget);
+          expect(find.byType(DailyPlanError), findsNothing);
+        });
+      }
+    }
+  });
 }

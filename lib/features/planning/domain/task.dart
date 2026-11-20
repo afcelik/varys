@@ -58,6 +58,10 @@ abstract class Task with _$Task {
     @TaskDateConverter() DateTime? dueDate,
     /// Linked project (`project_id`); null when the task has no project.
     int? projectId,
+
+    /// Eisenhower flags (`is_important`, `is_urgent`); a missing key is false.
+    @Default(false) bool isImportant,
+    @Default(false) bool isUrgent,
   }) = _Task;
 
   factory Task.fromJson(Map<String, dynamic> json) => _$TaskFromJson(json);

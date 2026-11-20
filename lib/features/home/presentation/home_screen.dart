@@ -6,6 +6,7 @@ import 'package:varys/core/router/app_router.dart';
 import 'package:varys/features/home/domain/today_provider.dart';
 import 'package:varys/features/home/presentation/providers/daily_plan_provider.dart';
 import 'package:varys/features/home/presentation/widgets/date_header.dart';
+import 'package:varys/features/home/presentation/widgets/eisenhower_card.dart';
 import 'package:varys/features/home/presentation/widgets/focus_cards.dart';
 import 'package:varys/features/home/presentation/widgets/say_no_card.dart';
 import 'package:varys/features/home/presentation/widgets/daily_plan_state_widgets.dart';
@@ -82,8 +83,16 @@ class HomeScreen extends ConsumerWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Left column: main focus, then the priority matrix below it.
             Expanded(
-              child: MainFocusCard(plan: plan),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  MainFocusCard(plan: plan),
+                  const SizedBox(height: 12),
+                  const EisenhowerCard(),
+                ],
+              ),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -131,6 +140,8 @@ class HomeScreen extends ConsumerWidget {
         const RoutinesCard(),
         const SizedBox(height: 12),
         const ProjectsCard(),
+        const SizedBox(height: 12),
+        const EisenhowerCard(),
         const SizedBox(height: 24),
         _buildPlaceholderCards(context, theme),
       ],

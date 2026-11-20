@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:varys/features/auth/domain/auth_notifier.dart';
 import 'package:varys/features/auth/domain/auth_state.dart';
 import 'package:varys/features/auth/presentation/login_page.dart';
+import 'package:varys/features/home/presentation/eisenhower_quadrant_page.dart';
 import 'package:varys/features/home/presentation/home_screen.dart';
 import 'package:varys/features/home/domain/focus_candidates.dart';
 import 'package:varys/features/home/presentation/focus_task_selection_page.dart';
@@ -12,6 +13,7 @@ import 'package:varys/features/inbox/presentation/inbox_screen.dart';
 import 'package:varys/features/notes/domain/note.dart';
 import 'package:varys/features/notes/presentation/note_edit_screen.dart';
 import 'package:varys/features/notes/presentation/notes_screen.dart';
+import 'package:varys/features/planning/domain/eisenhower.dart';
 import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/features/planning/presentation/planning_screen.dart';
 import 'package:varys/features/planning/presentation/task_edit_screen.dart';
@@ -53,6 +55,11 @@ class AppRouter {
   static const String projectsEditPath = '/projects/edit';
   static const String tasksNewPath = '/tasks/new';
   static const String tasksEditPath = '/tasks/edit';
+  static const String eisenhowerRoutePath = '/eisenhower/:quadrant';
+
+  /// `/eisenhower/<segment>` for [quadrant] (opened with push from Home).
+  static String eisenhowerPath(EisenhowerQuadrant quadrant) =>
+      '/eisenhower/${quadrant.pathSegment}';
 
   /// Router error page (unknown path) texts.
   static const String errorTitle = 'Sayfa bulunamadı';
@@ -279,6 +286,24 @@ class AppRouter {
               child: extra is FocusSlot
                   ? FocusTaskSelectionPage(slot: extra)
                   : const FocusSelectionUnavailablePage(),
+            );
+          },
+        ),
+        // Eisenhower quadrant page (outside the shell, pushed from the Home
+        // card). An unknown quadrant shows an error page built here; no
+        // redirect (a redirect on push adds a second /home). Not in the menu.
+        GoRoute(
+          path: eisenhowerRoutePath,
+          name: 'eisenhower',
+          pageBuilder: (context, state) {
+            final quadrant = EisenhowerQuadrant.fromPathSegment(state.pathParameters['quadrant']);
+            return NoTransitionPage(
+              child: quadrant == null
+                  ? const EisenhowerUnavailablePage()
+                  : EisenhowerQuadrantPage(
+                      key: ValueKey('eisenhower-${quadrant.pathSegment}'),
+                      quadrant: quadrant,
+                    ),
             );
           },
         ),

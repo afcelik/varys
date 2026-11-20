@@ -30,6 +30,9 @@ import 'package:varys/shared/widgets/back_arrow.dart';
 /// from the list (deleted) falls back to "Projesiz" and counts as a change.
 /// Kaydet is enabled only when something changed; only changed fields are
 /// sent ([computeTaskChanges]).
+///
+/// Both modes have the Eisenhower switches "Önemli" and "Acil" (edit: the
+/// task's current values; create: off, and only a switched-on flag is sent).
 class TaskEditScreen extends ConsumerStatefulWidget {
   const TaskEditScreen({super.key, this.task});
 
@@ -50,6 +53,10 @@ class TaskEditScreen extends ConsumerStatefulWidget {
   static const String saveText = 'Kaydet';
   static const String projectsErrorText = 'Projeler yüklenemedi';
   static const String retryText = 'Tekrar dene';
+  static const String importantLabel = 'Önemli';
+  static const String importantHelp = 'Hedeflerine katkısı büyük';
+  static const String urgentLabel = 'Acil';
+  static const String urgentHelp = 'Zamanı dar';
 
   /// Bounds of the due date picker.
   static final DateTime minDate = DateTime(2000, 1, 1);
@@ -77,6 +84,8 @@ class _TaskEditScreenState extends ConsumerState<TaskEditScreen> {
   int? _projectId;
   DateTime? _dueDate;
   DateTime? _plannedDate;
+  bool _important = false;
+  bool _urgent = false;
   bool _titleTouched = false;
   bool _saving = false;
 
@@ -92,6 +101,8 @@ class _TaskEditScreenState extends ConsumerState<TaskEditScreen> {
       _projectId = task.projectId;
       _dueDate = _dayOf(task.dueDate);
       _plannedDate = _dayOf(task.plannedDate);
+      _important = task.isImportant;
+      _urgent = task.isUrgent;
     }
   }
 
@@ -122,6 +133,8 @@ class _TaskEditScreenState extends ConsumerState<TaskEditScreen> {
           projectResolved: !projectPending,
           dueDate: _dueDate,
           plannedDate: _plannedDate,
+          isImportant: _important,
+          isUrgent: _urgent,
         ),
       );
 
@@ -188,6 +201,8 @@ class _TaskEditScreenState extends ConsumerState<TaskEditScreen> {
             description: _description.text,
             projectId: projectId,
             dueDate: _dueDate,
+            isImportant: _important,
+            isUrgent: _urgent,
           ),
         );
     if (!mounted) return; // page closed while the request ran
@@ -294,6 +309,21 @@ class _TaskEditScreenState extends ConsumerState<TaskEditScreen> {
                   onClear: () => setState(() => _plannedDate = null),
                 ),
               ],
+              const SizedBox(height: 16),
+              _FlagSwitch(
+                key: const ValueKey('task-important'),
+                label: TaskEditScreen.importantLabel,
+                help: TaskEditScreen.importantHelp,
+                value: _important,
+                onChanged: _saving ? null : (v) => setState(() => _important = v),
+              ),
+              _FlagSwitch(
+                key: const ValueKey('task-urgent'),
+                label: TaskEditScreen.urgentLabel,
+                help: TaskEditScreen.urgentHelp,
+                value: _urgent,
+                onChanged: _saving ? null : (v) => setState(() => _urgent = v),
+              ),
             ],
           ),
         ),
@@ -383,6 +413,38 @@ class _TaskEditScreenState extends ConsumerState<TaskEditScreen> {
       ]);
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
+  }
+}
+
+/// One Eisenhower switch: the whole row (at least 48 high) toggles it;
+/// [onChanged] null disables it (while saving). The help text wraps to at
+/// most 2 lines.
+class _FlagSwitch extends StatelessWidget {
+  const _FlagSwitch({
+    super.key,
+    required this.label,
+    required this.help,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String help;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 48),
+      child: SwitchListTile(
+        value: value,
+        onChanged: onChanged,
+        contentPadding: EdgeInsets.zero,
+        title: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(help, maxLines: 2, overflow: TextOverflow.ellipsis),
+      ),
+    );
   }
 }
 

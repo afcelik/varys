@@ -107,6 +107,8 @@ class _FakeTaskServer implements TaskRepository {
     PlanField<DateTime> plannedDate = const PlanField.unset(),
     PlanField<DateTime> dueDate = const PlanField.unset(),
     PlanField<int> projectId = const PlanField.unset(),
+    bool? isImportant,
+    bool? isUrgent,
   }) async {
     patchCalls++;
     final current = tasks[id];

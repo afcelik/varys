@@ -152,6 +152,8 @@ class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
         projectId: changes.projectId,
         dueDate: changes.dueDate,
         plannedDate: changes.plannedDate,
+        isImportant: changes.isImportant,
+        isUrgent: changes.isUrgent,
       );
       return result.fold(
         (failure) {

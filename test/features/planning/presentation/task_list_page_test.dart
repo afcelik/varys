@@ -562,6 +562,8 @@ class _MockTaskRepository implements TaskRepository {
     PlanField<DateTime> plannedDate = const PlanField.unset(),
     PlanField<DateTime> dueDate = const PlanField.unset(),
     PlanField<int> projectId = const PlanField.unset(),
+    bool? isImportant,
+    bool? isUrgent,
   }) async =>
       throw UnimplementedError();
 

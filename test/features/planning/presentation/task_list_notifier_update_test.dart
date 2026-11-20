@@ -388,4 +388,44 @@ void main() {
     await _settle();
     expect(c.exists(taskListNotifierProvider), isFalse, reason: 'released after the refresh');
   });
+
+  test('Eisenhower flags are forwarded as given; untouched flags stay null', () async {
+    final c = makeContainer();
+    await listenAll(c);
+    final flagged = movedToProject2.copyWith(isUrgent: true);
+    when(
+      () => taskRepo.updateTask(
+        any(),
+        title: any(named: 'title'),
+        description: any(named: 'description'),
+        status: any(named: 'status'),
+        plannedDate: any(named: 'plannedDate'),
+        dueDate: any(named: 'dueDate'),
+        projectId: any(named: 'projectId'),
+        isImportant: any(named: 'isImportant'),
+        isUrgent: any(named: 'isUrgent'),
+      ),
+    ).thenAnswer((_) async => Right(flagged));
+
+    final result = await c
+        .read(taskListNotifierProvider.notifier)
+        .updateTask(original, const TaskChanges(isUrgent: true));
+
+    expect(result, Right<Failure, Task>(flagged));
+    final captured = verify(
+      () => taskRepo.updateTask(
+        1,
+        title: any(named: 'title'),
+        description: any(named: 'description'),
+        status: any(named: 'status'),
+        plannedDate: any(named: 'plannedDate'),
+        dueDate: any(named: 'dueDate'),
+        projectId: any(named: 'projectId'),
+        isImportant: captureAny(named: 'isImportant'),
+        isUrgent: captureAny(named: 'isUrgent'),
+      ),
+    ).captured;
+    expect(captured, [null, true]);
+    expect(tasks(c).first.isUrgent, isTrue, reason: 'server task replaced the row');
+  });
 }

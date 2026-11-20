@@ -377,6 +377,65 @@ void main() {
             bottomInset: _keyboard,
           );
         });
+
+        testWidgets('Eisenhower switches on, then error snackbar: rows >= 48, help <= 2 lines', (
+          tester,
+        ) async {
+          when(
+            () => taskRepo.updateTask(
+              any(),
+              title: any(named: 'title'),
+              description: any(named: 'description'),
+              status: any(named: 'status'),
+              plannedDate: any(named: 'plannedDate'),
+              dueDate: any(named: 'dueDate'),
+              projectId: any(named: 'projectId'),
+              isImportant: any(named: 'isImportant'),
+              isUrgent: any(named: 'isUrgent'),
+            ),
+          ).thenAnswer((_) async => const Left(_serverError));
+          Future<void> pumpCase(WidgetTester t, Size s, double sc) => pumpForm(t, s, sc);
+
+          await pumpCase(tester, size, scale);
+          final important = find.byKey(const ValueKey('task-important'));
+          final urgent = find.byKey(const ValueKey('task-urgent'));
+          for (final (f, help) in [
+            (important, TaskEditScreen.importantHelp),
+            (urgent, TaskEditScreen.urgentHelp),
+          ]) {
+            await tester.ensureVisible(f);
+            await tester.pumpAndSettle();
+            await tester.tap(f);
+            await tester.pumpAndSettle();
+            final tile = tester.widget<SwitchListTile>(
+              find.descendant(of: f, matching: find.byType(SwitchListTile)),
+            );
+            expect(tile.value, isTrue, reason: '$label $help switched on');
+            final rect = tester.getRect(f);
+            expect(rect.height, greaterThanOrEqualTo(48), reason: '$label $help row height');
+            expect(rect.left, greaterThanOrEqualTo(-0.5), reason: '$label $help left');
+            expect(rect.right, lessThanOrEqualTo(width + 0.5), reason: '$label $help right');
+            final helpText = find.descendant(of: f, matching: find.text(help));
+            expect(tester.widget<Text>(helpText).maxLines, 2);
+            expectAtMostLines(tester, helpText, 2, '$label $help');
+            final labelText = find.descendant(
+              of: f,
+              matching: find.text(
+                f == important ? TaskEditScreen.importantLabel : TaskEditScreen.urgentLabel,
+              ),
+            );
+            expectAtMostLines(tester, labelText, 1, '$label $help label');
+          }
+          expectNoException(tester, '$label switches');
+          expectTapTargets(tester, '$label switches');
+          await expectReachableAndHittable(tester, saveButton, '$label switches');
+
+          await tester.tap(saveButton);
+          await tester.pumpAndSettle();
+          expect(find.byType(SnackBar), findsOneWidget);
+          expectNoException(tester, '$label switches + snackbar');
+          await expectReachableAndHittable(tester, saveButton, '$label switches + snackbar');
+        });
       });
     }
   }

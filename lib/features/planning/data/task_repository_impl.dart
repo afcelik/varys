@@ -94,6 +94,9 @@ class TaskRepositoryImpl implements TaskRepository {
       if (task.projectId != null) {
         requestBody['project_id'] = task.projectId;
       }
+      // Eisenhower flags only when true; the backend default is false.
+      if (task.isImportant) requestBody['is_important'] = true;
+      if (task.isUrgent) requestBody['is_urgent'] = true;
 
       final response = await _apiClient.post<Map<String, dynamic>>(
         _basePath,
@@ -128,6 +131,8 @@ class TaskRepositoryImpl implements TaskRepository {
     PlanField<DateTime> plannedDate = const PlanField.unset(),
     PlanField<DateTime> dueDate = const PlanField.unset(),
     PlanField<int> projectId = const PlanField.unset(),
+    bool? isImportant,
+    bool? isUrgent,
   }) async {
     try {
       // Only explicitly given fields are sent; clear → explicit null.
@@ -138,6 +143,9 @@ class TaskRepositoryImpl implements TaskRepository {
       _writeDay(requestBody, 'planned_date', plannedDate);
       _writeDay(requestBody, 'due_date', dueDate);
       projectId.writeTo(requestBody, 'project_id');
+      // Flags are never null on the wire (backend 422): null → not sent.
+      if (isImportant != null) requestBody['is_important'] = isImportant;
+      if (isUrgent != null) requestBody['is_urgent'] = isUrgent;
 
       final response = await _apiClient.patch<Map<String, dynamic>>(
         '$_basePath/$id',

@@ -79,6 +79,8 @@ Task buildNewTask({
   required String description,
   int? projectId,
   DateTime? dueDate,
+  bool isImportant = false,
+  bool isUrgent = false,
   DateTime? now,
 }) {
   final d = description.trim();
@@ -92,6 +94,8 @@ Task buildNewTask({
     updatedAt: at,
     dueDate: dueDate == null ? null : DateTime(dueDate.year, dueDate.month, dueDate.day),
     projectId: projectId,
+    isImportant: isImportant,
+    isUrgent: isUrgent,
   );
 }
 
@@ -129,6 +133,8 @@ class TaskFormValues {
     this.projectResolved = true,
     this.dueDate,
     this.plannedDate,
+    this.isImportant,
+    this.isUrgent,
   });
 
   final String title;
@@ -137,10 +143,16 @@ class TaskFormValues {
   final bool projectResolved;
   final DateTime? dueDate;
   final DateTime? plannedDate;
+
+  /// Eisenhower switches; null means the form does not carry the field
+  /// (it stays unchanged, never sent as false).
+  final bool? isImportant;
+  final bool? isUrgent;
 }
 
-/// The fields a PATCH sends: only what changed. [title] null is "not sent"
-/// (the backend rejects a null title); every other field is explicit.
+/// The fields a PATCH sends: only what changed. [title], [isImportant] and
+/// [isUrgent] null are "not sent" (the backend rejects null for them); every
+/// other field is explicit.
 @immutable
 class TaskChanges {
   const TaskChanges({
@@ -149,6 +161,8 @@ class TaskChanges {
     this.projectId = const PlanField.unset(),
     this.dueDate = const PlanField.unset(),
     this.plannedDate = const PlanField.unset(),
+    this.isImportant,
+    this.isUrgent,
   });
 
   final String? title;
@@ -156,13 +170,17 @@ class TaskChanges {
   final PlanField<int> projectId;
   final PlanField<DateTime> dueDate;
   final PlanField<DateTime> plannedDate;
+  final bool? isImportant;
+  final bool? isUrgent;
 
   bool get isEmpty =>
       title == null &&
       description.isUnset &&
       projectId.isUnset &&
       dueDate.isUnset &&
-      plannedDate.isUnset;
+      plannedDate.isUnset &&
+      isImportant == null &&
+      isUrgent == null;
 
   @override
   bool operator ==(Object other) =>
@@ -171,15 +189,19 @@ class TaskChanges {
       other.description == description &&
       other.projectId == projectId &&
       other.dueDate == dueDate &&
-      other.plannedDate == plannedDate;
+      other.plannedDate == plannedDate &&
+      other.isImportant == isImportant &&
+      other.isUrgent == isUrgent;
 
   @override
-  int get hashCode => Object.hash(title, description, projectId, dueDate, plannedDate);
+  int get hashCode =>
+      Object.hash(title, description, projectId, dueDate, plannedDate, isImportant, isUrgent);
 
   @override
   String toString() =>
       'TaskChanges(title: $title, description: $description, projectId: $projectId, '
-      'dueDate: $dueDate, plannedDate: $plannedDate)';
+      'dueDate: $dueDate, plannedDate: $plannedDate, isImportant: $isImportant, '
+      'isUrgent: $isUrgent)';
 }
 
 DateTime? _day(DateTime? d) => d == null ? null : DateTime(d.year, d.month, d.day);
@@ -191,6 +213,9 @@ PlanField<DateTime> _dayChange(DateTime? original, DateTime? next) {
   if (a == b) return const PlanField.unset();
   return b == null ? const PlanField.clear() : PlanField.set(b);
 }
+
+/// Flag change: null (not sent) when the form does not carry it or it is the same.
+bool? _flagChange(bool original, bool? next) => next == null || next == original ? null : next;
 
 /// What the edit form changed compared to [original]. Title and description
 /// are trimmed; an empty description equals "none" (null) and clears it;
@@ -225,5 +250,7 @@ TaskChanges computeTaskChanges(Task original, TaskFormValues form) {
     projectId: projectChange,
     dueDate: _dayChange(original.dueDate, form.dueDate),
     plannedDate: _dayChange(original.plannedDate, form.plannedDate),
+    isImportant: _flagChange(original.isImportant, form.isImportant),
+    isUrgent: _flagChange(original.isUrgent, form.isUrgent),
   );
 }

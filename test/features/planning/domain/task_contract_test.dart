@@ -335,4 +335,72 @@ void main() {
       expect(Task.fromJson(back), task);
     });
   });
+
+  group('Eisenhower flags (real backend is_important / is_urgent)', () {
+    Object? read(String name) => jsonDecode(File('test/fixtures/$name').readAsStringSync());
+
+    test('GET /tasks: every flag pair parsed as sent, done task included', () {
+      final raw = (read('tasks_eisenhower.json') as List).cast<Map<String, dynamic>>();
+      final tasks = raw.map(Task.fromJson).toList();
+      expect(tasks.map((t) => t.id), [5, 4, 3, 2, 1]);
+      for (var i = 0; i < raw.length; i++) {
+        expect(raw[i]['is_important'], isA<bool>(), reason: 'id ${raw[i]['id']}');
+        expect(raw[i]['is_urgent'], isA<bool>(), reason: 'id ${raw[i]['id']}');
+        expect(tasks[i].isImportant, raw[i]['is_important']);
+        expect(tasks[i].isUrgent, raw[i]['is_urgent']);
+      }
+      final byId = {for (final t in tasks) t.id: t};
+      expect((byId[1]!.isImportant, byId[1]!.isUrgent), (true, true));
+      expect((byId[2]!.isImportant, byId[2]!.isUrgent), (true, false));
+      expect((byId[3]!.isImportant, byId[3]!.isUrgent), (false, true));
+      expect((byId[4]!.isImportant, byId[4]!.isUrgent), (false, false));
+      expect(byId[5]!.status, TaskStatus.done);
+      expect((byId[5]!.isImportant, byId[5]!.isUrgent), (true, true));
+      expect(byId[2]!.projectId, 1);
+      expect(byId[1]!.dueDate, DateTime(2026, 11, 21));
+    });
+
+    test('POST response: both flags true', () {
+      final task = Task.fromJson(read('task_created_flags.json') as Map<String, dynamic>);
+      expect(task.id, 6);
+      expect(task.title, 'Sunumu bitir');
+      expect(task.isImportant, isTrue);
+      expect(task.isUrgent, isTrue);
+      expect(task.status, TaskStatus.todo);
+    });
+
+    test('PATCH response: both flags switched on', () {
+      final task = Task.fromJson(read('task_update_flags.json') as Map<String, dynamic>);
+      expect(task.id, 4);
+      expect(task.title, 'Eski e-postaları ayıkla');
+      expect(task.isImportant, isTrue);
+      expect(task.isUrgent, isTrue);
+    });
+
+    test('toJson round-trip writes is_important / is_urgent and keeps them', () {
+      final raw = (read('tasks_eisenhower.json') as List).cast<Map<String, dynamic>>();
+      for (final t in raw.map(Task.fromJson)) {
+        final json = t.toJson();
+        expect(json['is_important'], t.isImportant, reason: 'id ${t.id}');
+        expect(json['is_urgent'], t.isUrgent, reason: 'id ${t.id}');
+        expect(json.containsKey('isImportant'), isFalse);
+        expect(Task.fromJson(json), t);
+      }
+    });
+
+    test('older payloads without the flag keys parse both flags as false', () {
+      final older = <Map<String, dynamic>>[
+        ...(read('tasks_with_project.json') as List).cast<Map<String, dynamic>>(),
+        read('task_update_set.json') as Map<String, dynamic>,
+        read('task_created_plain.json') as Map<String, dynamic>,
+      ];
+      for (final json in older) {
+        expect(json.containsKey('is_important'), isFalse, reason: 'fixture predates the flags');
+        expect(json.containsKey('is_urgent'), isFalse, reason: 'fixture predates the flags');
+        final task = Task.fromJson(json);
+        expect(task.isImportant, isFalse, reason: 'id ${task.id}');
+        expect(task.isUrgent, isFalse, reason: 'id ${task.id}');
+      }
+    });
+  });
 }

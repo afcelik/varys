@@ -296,4 +296,69 @@ void main() {
       );
     });
   });
+
+  group('Eisenhower flags in the form helpers', () {
+    Task flagged({bool important = false, bool urgent = false}) =>
+        _task().copyWith(isImportant: important, isUrgent: urgent);
+
+    TaskFormValues values({bool? important, bool? urgent}) => TaskFormValues(
+      title: 'Görev',
+      description: '',
+      projectId: null,
+      isImportant: important,
+      isUrgent: urgent,
+    );
+
+    test('buildNewTask: flags default to false and carry given values', () {
+      final plain = buildNewTask(title: 'A', description: '');
+      expect((plain.isImportant, plain.isUrgent), (false, false));
+      final both = buildNewTask(title: 'A', description: '', isImportant: true, isUrgent: true);
+      expect((both.isImportant, both.isUrgent), (true, true));
+    });
+
+    test('same flags → no change, TaskChanges is empty', () {
+      final changes = computeTaskChanges(
+        flagged(important: true),
+        values(important: true, urgent: false),
+      );
+      expect(changes.isImportant, isNull);
+      expect(changes.isUrgent, isNull);
+      expect(changes.isEmpty, isTrue);
+    });
+
+    test('only urgent switched on → only isUrgent set', () {
+      final changes = computeTaskChanges(
+        flagged(important: true),
+        values(important: true, urgent: true),
+      );
+      expect(changes, const TaskChanges(isUrgent: true));
+      expect(changes.isEmpty, isFalse);
+    });
+
+    test('important switched off → isImportant false (sent), urgent untouched', () {
+      final changes = computeTaskChanges(
+        flagged(important: true, urgent: true),
+        values(important: false, urgent: true),
+      );
+      expect(changes, const TaskChanges(isImportant: false));
+      expect(changes.isEmpty, isFalse);
+    });
+
+    test('a form without the flags (null) never sends them, even for flagged tasks', () {
+      final changes = computeTaskChanges(flagged(important: true, urgent: true), values());
+      expect(changes.isImportant, isNull);
+      expect(changes.isUrgent, isNull);
+      expect(changes.isEmpty, isTrue);
+    });
+
+    test('TaskChanges equality and hashCode include the flags', () {
+      expect(const TaskChanges(isUrgent: true), isNot(const TaskChanges(isUrgent: false)));
+      expect(const TaskChanges(isUrgent: true), isNot(const TaskChanges(isImportant: true)));
+      expect(
+        const TaskChanges(isImportant: true).hashCode,
+        const TaskChanges(isImportant: true).hashCode,
+      );
+      expect(const TaskChanges(isImportant: false).isEmpty, isFalse);
+    });
+  });
 }
