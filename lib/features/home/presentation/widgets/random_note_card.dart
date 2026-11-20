@@ -1,26 +1,56 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:varys/core/errors/error_utils.dart';
 import 'package:varys/core/router/app_router.dart';
+import 'package:varys/features/notes/domain/note.dart';
+import 'package:varys/features/notes/presentation/today_note_notifier.dart';
+import 'package:varys/features/notes/presentation/widgets/note_tag_chips.dart';
 
-/// Card widget showing a random note or empty state on the Home screen.
-///
-/// Displays "No notes yet" with a "More" button that navigates to the Notes screen.
-/// Uses [context.push()] so the back button returns to Home.
-class RandomNoteCard extends StatelessWidget {
+/// Home card with the note of the day ([todayNoteProvider]): title (2 lines),
+/// the first lines of the body as plain text (3 lines; Markdown marks are
+/// shown as typed), up to 3 tags and "+N". No notes → "Henüz not yok" with
+/// "Not ekle". Loading and errors stay inside this card; "Tekrar dene"
+/// reloads only the card. While refreshing, the previous note stays.
+/// "Daha fazla" and "Not ekle" open the notes page with `push`.
+class RandomNoteCard extends ConsumerWidget {
   const RandomNoteCard({super.key});
 
+  static const String title = 'Rastgele Not';
+  static const String emptyText = 'Henüz not yok';
+  static const String addText = 'Not ekle';
+  static const String moreText = 'Daha fazla';
+  static const String retryText = 'Tekrar dene';
+
+  static const int titleMaxLines = 2;
+  static const int bodyMaxLines = 3;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final value = ref.watch(todayNoteProvider);
+
+    final Widget body;
+    if (value.hasError && !value.isLoading) {
+      body = _NoteCardError(
+        message: userMessage(value.error!),
+        onRetry: () => ref.invalidate(todayNoteProvider),
+      );
+    } else if (value.hasValue) {
+      final note = value.requireValue;
+      body = note == null
+          ? _EmptyNote(onAdd: () => context.push(AppRouter.notesPath))
+          : _NoteContent(note: note);
+    } else {
+      body = const _NoteCardSkeleton();
+    }
 
     return Card(
       elevation: 0,
       color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: theme.colorScheme.outline.withValues(alpha: 0.2),
-        ),
+        side: BorderSide(color: theme.colorScheme.outline.withValues(alpha: 0.2)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -29,44 +59,146 @@ class RandomNoteCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.note_alt_outlined,
-                  size: 20,
-                  color: theme.colorScheme.primary,
-                ),
+                Icon(Icons.note_alt_outlined, size: 20, color: theme.colorScheme.primary),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Rastgele Not',
+                    title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                   ),
                 ),
                 TextButton(
+                  key: const ValueKey('random-note-more'),
                   onPressed: () => context.push(AppRouter.notesPath),
-                  child: const Text('Daha Fazla'),
+                  style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                  child: const Text(moreText),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              'Henüz not yok',
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Notlarınız burada görünecek',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-              ),
-            ),
+            const SizedBox(height: 8),
+            body,
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _NoteContent extends StatelessWidget {
+  const _NoteContent({required this.note});
+
+  final Note note;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final body = note.body;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          note.title,
+          key: const ValueKey('random-note-title'),
+          maxLines: RandomNoteCard.titleMaxLines,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        if (body != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            body,
+            key: const ValueKey('random-note-body'),
+            maxLines: RandomNoteCard.bodyMaxLines,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+        ],
+        if (note.tags.isNotEmpty) ...[const SizedBox(height: 8), NoteTagChips(tags: note.tags)],
+      ],
+    );
+  }
+}
+
+class _EmptyNote extends StatelessWidget {
+  const _EmptyNote({required this.onAdd});
+
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          RandomNoteCard.emptyText,
+          style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          key: const ValueKey('random-note-add'),
+          onPressed: onAdd,
+          icon: const Icon(Icons.add),
+          label: const Text(RandomNoteCard.addText),
+          style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
+        ),
+      ],
+    );
+  }
+}
+
+class _NoteCardSkeleton extends StatelessWidget {
+  const _NoteCardSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3);
+    Widget bar(double widthFactor, double height) => FractionallySizedBox(
+      alignment: Alignment.centerLeft,
+      widthFactor: widthFactor,
+      child: Container(
+        height: height,
+        margin: const EdgeInsets.only(top: 8),
+        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(6)),
+      ),
+    );
+    return Column(
+      key: const ValueKey('random-note-skeleton'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [bar(0.6, 20), bar(1, 14), bar(0.8, 14)],
+    );
+  }
+}
+
+class _NoteCardError extends StatelessWidget {
+  const _NoteCardError({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Column(
+        children: [
+          Text(
+            message,
+            key: const ValueKey('random-note-error'),
+            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            key: const ValueKey('random-note-retry'),
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text(RandomNoteCard.retryText),
+            style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
+          ),
+        ],
       ),
     );
   }

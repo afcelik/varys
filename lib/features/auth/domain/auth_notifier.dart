@@ -8,6 +8,9 @@ import 'package:varys/core/network/api_client.dart';
 import 'package:varys/core/storage/secure_storage.dart';
 import 'package:varys/features/home/data/daily_plan_repository.dart';
 import 'package:varys/features/home/presentation/providers/daily_plan_provider.dart';
+import 'package:varys/features/notes/data/note_repository_impl.dart';
+import 'package:varys/features/notes/presentation/notes_list_notifier.dart';
+import 'package:varys/features/notes/presentation/today_note_notifier.dart';
 import 'package:varys/features/planning/data/task_repository_impl.dart';
 import 'package:varys/features/planning/presentation/task_notifier.dart';
 import 'package:varys/features/projects/data/project_repository_impl.dart';
@@ -60,6 +63,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     invalidate(activeProjectsProvider);
     invalidate(projectsListProvider);
     invalidate(projectRepositoryProvider);
+    invalidate(todayNoteProvider);
+    invalidate(notesListProvider);
+    invalidate(noteRepositoryProvider);
   }
 
   /// Identity infrastructure (not user data). `apiClientProvider` also

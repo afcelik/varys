@@ -1,0 +1,17 @@
+{
+  "detail": [
+    {
+      "type": "value_error",
+      "loc": [
+        "body"
+      ],
+      "msg": "Value error, title cannot be null",
+      "input": {
+        "title": null
+      },
+      "ctx": {
+        "error": {}
+      }
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "id": 1,
+  "title": "İş toplantısı notları",
+  "body": "Pazartesi sunumu hazırla.\nBütçe tablosunu güncelle.",
+  "is_favorite": true,
+  "tags": [
+    "iş",
+    "öğrenim"
+  ],
+  "created_at": "2026-11-19T19:36:18",
+  "updated_at": "2026-11-19T19:36:18"
+}

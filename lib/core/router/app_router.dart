@@ -9,6 +9,8 @@ import 'package:varys/features/home/presentation/home_screen.dart';
 import 'package:varys/features/home/domain/focus_candidates.dart';
 import 'package:varys/features/home/presentation/focus_task_selection_page.dart';
 import 'package:varys/features/inbox/presentation/inbox_screen.dart';
+import 'package:varys/features/notes/domain/note.dart';
+import 'package:varys/features/notes/presentation/note_edit_screen.dart';
 import 'package:varys/features/notes/presentation/notes_screen.dart';
 import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/features/planning/presentation/planning_screen.dart';
@@ -37,6 +39,8 @@ class AppRouter {
   static const String inboxPath = '/inbox';
   static const String planningPath = '/planning';
   static const String notesPath = '/notes';
+  static const String notesNewPath = '/notes/new';
+  static const String notesEditPath = '/notes/edit';
   static const String varysChatPath = '/varys-chat';
   static const String settingsPath = '/settings';
   static const String loginPath = '/login';
@@ -137,6 +141,29 @@ class AppRouter {
           pageBuilder: (context, state) => const NoTransitionPage(
             child: NotesScreen(),
           ),
+        ),
+        // Note create form: needs no extra. Not a menu destination.
+        GoRoute(
+          path: notesNewPath,
+          name: 'notes-new',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: NoteEditScreen(),
+          ),
+        ),
+        // Note edit form: the Note must come as extra (pushed from a /notes
+        // row). Anything else shows an error page; no fallback to create and
+        // no redirect (a redirect on push adds a second /home).
+        GoRoute(
+          path: notesEditPath,
+          name: 'notes-edit',
+          pageBuilder: (context, state) {
+            final extra = state.extra;
+            return NoTransitionPage(
+              child: extra is Note
+                  ? NoteEditScreen(key: ValueKey('note-edit-${extra.id}'), note: extra)
+                  : const NoteEditUnavailablePage(),
+            );
+          },
         ),
         GoRoute(
           path: inboxPath,

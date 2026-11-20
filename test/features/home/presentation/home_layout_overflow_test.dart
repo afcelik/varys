@@ -8,8 +8,10 @@
 // focus slots empty, with everything empty, and with the plan in its error
 // and loading states; the routines card in its empty, loading and error states;
 // the projects card filled (long titles, progress null/0/100, target date set
-// and null), empty, loading and error. The /projects skeleton page is drawn
-// at 360px with text scale 1.0 and 1.5.
+// and null), empty, loading and error; the "Rastgele Not" card filled (an
+// unbroken 255-character title, a 60-line body, 6 tags), empty, loading and
+// error. The /projects skeleton page is drawn at 360px with text scale 1.0
+// and 1.5.
 
 import 'dart:async';
 
@@ -42,6 +44,8 @@ import 'package:varys/features/home/presentation/widgets/projects_card.dart';
 import 'package:varys/features/home/presentation/widgets/random_note_card.dart';
 import 'package:varys/features/home/presentation/widgets/routines_card.dart';
 import 'package:varys/features/home/presentation/widgets/say_no_card.dart';
+import 'package:varys/features/notes/data/note_repository_impl.dart';
+import 'package:varys/features/notes/domain/note.dart';
 import 'package:varys/features/planning/data/task_repository_impl.dart';
 import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/features/planning/domain/task_repository.dart';
@@ -53,6 +57,7 @@ import 'package:varys/features/routines/data/routine_repository_impl.dart';
 import 'package:varys/features/routines/domain/routine.dart';
 
 import '../../../helpers/varys_app_harness.dart';
+import '../../notes/fake_note_repository.dart';
 import 'package:varys/features/routines/domain/routine_repository.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:varys/core/router/router_provider.dart';
@@ -242,6 +247,18 @@ List<RoutineDayItem> _clampRoutines() => [
     },
 ];
 
+/// The note of the day, worst case: the real 255-character unbroken title,
+/// the real 60-line body and 6 tags (3 drawn + "+3").
+Note _worstCaseNote() {
+  final notes = notesFixture();
+  return notes
+      .firstWhere((n) => n.id == 2)
+      .copyWith(
+        body: notes.firstWhere((n) => n.id == 3).body,
+        tags: [for (var i = 0; i < 6; i++) 'proje fikirleri $i'],
+      );
+}
+
 const _widths = [360.0, 600.0, 800.0, 801.0, 1000.0, 1200.0, 1400.0, 1800.0];
 const _textScales = [1.0, 1.5];
 
@@ -250,6 +267,7 @@ void main() {
   late _MockTaskRepository taskRepo;
   late _MockRoutineRepository routineRepo;
   late _MockProjectRepository projectRepo;
+  late FakeNoteRepository noteRepo;
 
   setUpAll(() async {
     await initializeDateFormatting('tr_TR', null);
@@ -264,6 +282,7 @@ void main() {
     taskRepo = _MockTaskRepository();
     routineRepo = _MockRoutineRepository();
     projectRepo = _MockProjectRepository();
+    noteRepo = FakeNoteRepository([_worstCaseNote()]);
     final plan = _worstCasePlan();
     when(() => planRepo.getPlan(any())).thenAnswer((_) async => Right(plan));
     when(() => taskRepo.getTasksByFilter(any())).thenAnswer((_) async => Right(plan.tasks));
@@ -280,6 +299,7 @@ void main() {
     taskRepositoryProvider.overrideWith((ref) async => taskRepo),
     routineRepositoryProvider.overrideWith((ref) async => routineRepo),
     projectRepositoryProvider.overrideWith((ref) async => projectRepo),
+    noteRepositoryProvider.overrideWith((ref) async => noteRepo),
   ];
 
   /// Pumps the real app (real router, real MainScaffold) logged in on Home.
@@ -832,6 +852,83 @@ void main() {
           // The rest of Home still works.
           expect(find.byType(RoutinesCard), findsOneWidget);
           expect(find.text(_routineTitle), findsOneWidget);
+        });
+      }
+    }
+  });
+
+  group('Random note card states have no overflow on Home', () {
+    Finder inCard(Finder f) => find.descendant(of: find.byType(RandomNoteCard), matching: f);
+    final title = find.byKey(const ValueKey('random-note-title'));
+    final body = find.byKey(const ValueKey('random-note-body'));
+
+    void expectCardFrame(WidgetTester tester, String label) {
+      expect(inCard(find.text(RandomNoteCard.title)), findsOneWidget, reason: label);
+      expectTapTarget(tester, find.byKey(const ValueKey('random-note-more')), '$label more');
+      final card = tester.getRect(find.byType(RandomNoteCard));
+      expect(card.left, greaterThanOrEqualTo(0), reason: label);
+      expect(card.right, lessThanOrEqualTo(tester.view.physicalSize.width), reason: label);
+    }
+
+    for (final width in _widths) {
+      for (final textScale in _textScales) {
+        final label = 'width ${width.toInt()}px, textScale $textScale';
+
+        testWidgets('filled (255 unbroken title, long body, 6 tags), $label', (tester) async {
+          await pumpApp(tester, width, textScale: textScale);
+          expect(tester.takeException(), isNull, reason: label);
+          expectCardFrame(tester, label);
+          expect(drawnLines(tester, title), RandomNoteCard.titleMaxLines, reason: '$label title');
+          expect(tester.renderObject<RenderParagraph>(title).didExceedMaxLines, isTrue);
+          expect(drawnLines(tester, body), RandomNoteCard.bodyMaxLines, reason: '$label body');
+          expect(tester.renderObject<RenderParagraph>(body).didExceedMaxLines, isTrue);
+          expect(inCard(find.text('+3')), findsOneWidget, reason: label);
+          final cardRect = tester.getRect(find.byType(RandomNoteCard));
+          for (final f in [title, body]) {
+            final r = tester.getRect(f);
+            expect(r.left, greaterThanOrEqualTo(cardRect.left), reason: label);
+            expect(r.right, lessThanOrEqualTo(cardRect.right), reason: label);
+          }
+        });
+
+        testWidgets('empty, $label', (tester) async {
+          noteRepo.server = [];
+          await pumpApp(tester, width, textScale: textScale);
+          expect(tester.takeException(), isNull, reason: label);
+          expectCardFrame(tester, label);
+          expect(inCard(find.text(RandomNoteCard.emptyText)), findsOneWidget);
+          expectTapTarget(tester, find.byKey(const ValueKey('random-note-add')), '$label add');
+        });
+
+        testWidgets('loading, $label', (tester) async {
+          noteRepo.randomGate = Completer<void>();
+          addTearDown(() {
+            if (!noteRepo.randomGate!.isCompleted) noteRepo.randomGate!.complete();
+          });
+          await pumpApp(tester, width, textScale: textScale, settle: false);
+          expect(tester.takeException(), isNull, reason: label);
+          // No pumpAndSettle (the request stays pending): step past the side
+          // rail's open animation before measuring edges.
+          for (var i = 0; i < 5; i++) {
+            await tester.pump(const Duration(milliseconds: 100));
+          }
+          expect(tester.takeException(), isNull, reason: label);
+          expectCardFrame(tester, label);
+          expect(inCard(find.byKey(const ValueKey('random-note-skeleton'))), findsOneWidget);
+          expect(title, findsNothing);
+        });
+
+        testWidgets('error, $label', (tester) async {
+          const failure = NetworkFailure('timeout');
+          noteRepo.randomFailure = failure;
+          await pumpApp(tester, width, textScale: textScale);
+          expect(tester.takeException(), isNull, reason: label);
+          expectCardFrame(tester, label);
+          expect(inCard(find.text(userMessage(failure))), findsOneWidget);
+          expectTapTarget(tester, find.byKey(const ValueKey('random-note-retry')), '$label retry');
+          // The error stays in the card: the rest of Home is drawn.
+          expect(find.byType(ProjectsCard), findsOneWidget);
+          expect(find.byType(InboxCard), findsOneWidget);
         });
       }
     }
