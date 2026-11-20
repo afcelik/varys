@@ -19,6 +19,9 @@ import 'package:varys/features/projects/presentation/projects_list_notifier.dart
 import 'package:varys/features/routines/data/routine_repository_impl.dart';
 import 'package:varys/features/routines/presentation/routines_day_notifier.dart';
 import 'package:varys/features/routines/presentation/routines_list_notifier.dart';
+import 'package:varys/features/schedule/data/schedule_repository_impl.dart';
+import 'package:varys/features/schedule/presentation/schedule_day_notifier.dart';
+import 'package:varys/features/schedule/presentation/schedule_list_notifier.dart';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
@@ -66,6 +69,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     invalidate(todayNoteProvider);
     invalidate(notesListProvider);
     invalidate(noteRepositoryProvider);
+    invalidate(scheduleForDayProvider);
+    invalidate(scheduleBlocksProvider);
+    invalidate(scheduleRepositoryProvider);
   }
 
   /// Identity infrastructure (not user data). `apiClientProvider` also

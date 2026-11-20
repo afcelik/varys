@@ -23,6 +23,17 @@ class TodayNotifier extends Notifier<DateTime> with WidgetsBindingObserver {
     }
   }
 
+  /// Moves to the calendar day of [now] (e.g. after midnight, seen by the
+  /// schedule card's minute ticker). State changes only when the day really
+  /// differs, so listeners are not notified for a later time on the same day.
+  /// Returns whether the day changed.
+  bool syncDate(DateTime now) {
+    final newDate = dateOnly(now);
+    if (newDate == state) return false;
+    state = newDate;
+    return true;
+  }
+
   /// Returns date at midnight (00:00:00.000)
   /// Public for testing
   DateTime dateOnly(DateTime dateTime) {

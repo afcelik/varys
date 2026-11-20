@@ -15,6 +15,7 @@ import 'package:varys/features/home/presentation/widgets/random_note_card.dart';
 import 'package:varys/features/home/presentation/widgets/daily_tasks_card.dart';
 import 'package:varys/features/home/presentation/widgets/projects_card.dart';
 import 'package:varys/features/home/presentation/widgets/routines_card.dart';
+import 'package:varys/features/home/presentation/widgets/schedule_card.dart';
 
 /// Home screen - main dashboard view with "Today" mode
 class HomeScreen extends ConsumerWidget {
@@ -38,7 +39,11 @@ class HomeScreen extends ConsumerWidget {
         ],
       ),
       body: SafeArea(
+        // On a day change (midnight or resume) keep the current content until
+        // the new day's plan arrives: the cards stay mounted, so each of them
+        // loads the new day exactly once instead of being rebuilt from scratch.
         child: dailyPlanAsync.when(
+          skipLoadingOnReload: true,
           data: (plan) => _buildPlanContent(context, theme, today, plan),
           loading: () => _buildLoadingContent(context),
           error: (error, stack) => _buildErrorContent(context, ref, userMessage(error)),
@@ -83,12 +88,14 @@ class HomeScreen extends ConsumerWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Left column: main focus, then the priority matrix below it.
+            // Left column: main focus, today's schedule, then the priority matrix.
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   MainFocusCard(plan: plan),
+                  const SizedBox(height: 12),
+                  const ScheduleCard(),
                   const SizedBox(height: 12),
                   const EisenhowerCard(),
                 ],
@@ -132,6 +139,8 @@ class HomeScreen extends ConsumerWidget {
         MainFocusCard(plan: plan),
         const SizedBox(height: 12),
         SideFocusCard(plan: plan),
+        const SizedBox(height: 12),
+        const ScheduleCard(),
         const SizedBox(height: 12),
         SayNoCard(plan: plan),
         const SizedBox(height: 12),

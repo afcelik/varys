@@ -12,7 +12,10 @@
 // unbroken 255-character title, a 60-line body, 6 tags; the content tap
 // target at least 48 high and apart from "Daha fazla"), empty, loading and
 // error. The /projects skeleton page is drawn at 360px with text scale 1.0
-// and 1.5.
+// and 1.5. The "Günlük Program" card is drawn filled (11 blocks: 8 rows and
+// "Tümünü gör (+3)", an unbroken 255-character title, 00:00-23:59, "Şimdi"
+// labels at a fixed 09:10), empty, loading, error and with the quick-add
+// error message open; its groups use fixed pump steps (no pumpAndSettle).
 
 import 'dart:async';
 
@@ -46,6 +49,11 @@ import 'package:varys/features/home/presentation/widgets/projects_card.dart';
 import 'package:varys/features/home/presentation/widgets/random_note_card.dart';
 import 'package:varys/features/home/presentation/widgets/routines_card.dart';
 import 'package:varys/features/home/presentation/widgets/say_no_card.dart';
+import 'package:varys/features/home/presentation/widgets/schedule_card.dart';
+import 'package:varys/core/time/clock.dart';
+import 'package:varys/features/schedule/data/schedule_repository_impl.dart';
+import 'package:varys/features/schedule/domain/schedule_block.dart';
+import 'package:varys/features/schedule/domain/schedule_form.dart';
 import 'package:varys/features/notes/data/note_repository_impl.dart';
 import 'package:varys/features/notes/domain/note.dart';
 import 'package:varys/features/planning/data/task_repository_impl.dart';
@@ -61,6 +69,7 @@ import 'package:varys/features/routines/domain/routine.dart';
 
 import '../../../helpers/varys_app_harness.dart';
 import '../../notes/fake_note_repository.dart';
+import '../../schedule/fake_schedule_repository.dart';
 import 'package:varys/features/routines/domain/routine_repository.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:varys/core/router/router_provider.dart';
@@ -279,6 +288,37 @@ final String _markdownCardBody = [
   '# Başlık',
 ].join('\n');
 
+/// Real GET /schedule blocks, all made daily from [_day] so every one is
+/// due, plus 4 evening blocks: 11 blocks -> 8 rows and "Tümünü gör (+3)".
+/// The first 8 by time include the unbroken 255-character title (id 3) and
+/// 00:00-23:59 (id 6).
+List<ScheduleBlock> _worstCaseBlocks() {
+  final fixture = scheduleListFixture();
+  final daily = [
+    for (final b in fixture)
+      b.copyWith(
+        recurrenceType: RecurrenceType.daily,
+        daysOfWeek: null,
+        dayOfMonth: null,
+        intervalDays: null,
+        startDate: _day,
+      ),
+  ];
+  return [
+    ...daily,
+    for (var i = 0; i < 4; i++)
+      daily.first.copyWith(
+        id: 200 + i,
+        title: 'Akşam bloğu $i',
+        startTime: ScheduleTime.hm(19 + i, 0),
+        endTime: ScheduleTime.hm(19 + i, 30),
+      ),
+  ];
+}
+
+/// Fixed wall clock for the "Şimdi" marker on the schedule card.
+final _now = DateTime(2026, 11, 1, 9, 10);
+
 const _widths = [360.0, 600.0, 800.0, 801.0, 1000.0, 1200.0, 1400.0, 1800.0];
 const _textScales = [1.0, 1.5];
 
@@ -288,6 +328,7 @@ void main() {
   late _MockRoutineRepository routineRepo;
   late _MockProjectRepository projectRepo;
   late FakeNoteRepository noteRepo;
+  late FakeScheduleRepository scheduleRepo;
 
   setUpAll(() async {
     await initializeDateFormatting('tr_TR', null);
@@ -303,6 +344,7 @@ void main() {
     routineRepo = _MockRoutineRepository();
     projectRepo = _MockProjectRepository();
     noteRepo = FakeNoteRepository([_worstCaseNote()]);
+    scheduleRepo = FakeScheduleRepository(_worstCaseBlocks());
     final plan = _worstCasePlan();
     when(() => planRepo.getPlan(any())).thenAnswer((_) async => Right(plan));
     when(() => taskRepo.getTasksByFilter(any())).thenAnswer((_) async => Right(plan.tasks));
@@ -320,6 +362,8 @@ void main() {
     routineRepositoryProvider.overrideWith((ref) async => routineRepo),
     projectRepositoryProvider.overrideWith((ref) async => projectRepo),
     noteRepositoryProvider.overrideWith((ref) async => noteRepo),
+    scheduleRepositoryProvider.overrideWith((ref) async => scheduleRepo),
+    nowProvider.overrideWithValue(() => _now),
   ];
 
   /// Pumps the real app (real router, real MainScaffold) logged in on Home.
@@ -423,6 +467,11 @@ void main() {
     final size = tester.getSize(find.ancestor(of: addButton, matching: find.byType(IconButton)));
     expect(size.width, greaterThanOrEqualTo(48));
     expect(size.height, greaterThanOrEqualTo(48));
+    // Schedule card: 8 rows of 11, the unbroken 255-character title, "+3".
+    Finder inSchedule(Finder f) => find.descendant(of: find.byType(ScheduleCard), matching: f);
+    expect(inSchedule(find.text(ScheduleCard.title)), findsOneWidget);
+    expect(inSchedule(find.byKey(const ValueKey('schedule-title-3'))), findsOneWidget);
+    expect(inSchedule(find.text(ScheduleCard.seeAllText(3))), findsOneWidget);
   }
 
   /// The real shell around Home: side rail > 800px, bottom bar <= 800px,
@@ -478,6 +527,7 @@ void main() {
       ProjectsCard,
       RandomNoteCard,
       InboxCard,
+      ScheduleCard,
     ]) {
       expect(find.byType(type), findsNothing, reason: '$type');
     }
@@ -519,11 +569,16 @@ void main() {
           when(() => planRepo.getPlan(any())).thenAnswer((_) async => Right(plan));
           when(() => taskRepo.getTasksByFilter(any())).thenAnswer((_) async => const Right([]));
           when(() => routineRepo.getRoutinesForDay(any())).thenAnswer((_) async => const Right([]));
+          scheduleRepo.server = [];
           await pumpApp(tester, width, textScale: textScale);
           expect(tester.takeException(), isNull);
           expect(find.byType(HomeScreen), findsOneWidget);
           expectShell(width);
           expectEmptyFocusTargets(tester, width);
+          expect(
+            find.descendant(of: find.byType(ScheduleCard), matching: find.text(ScheduleCard.emptyText)),
+            findsOneWidget,
+          );
           expect(
             find.descendant(of: find.byType(SayNoCard), matching: find.text(_sayNoHint)),
             findsOneWidget,
@@ -753,6 +808,126 @@ void main() {
     expect(size.width, greaterThanOrEqualTo(48), reason: label);
     expect(size.height, greaterThanOrEqualTo(48), reason: label);
   }
+
+  group('Schedule card states have no overflow on Home', () {
+    Finder inSchedule(Finder f) => find.descendant(of: find.byType(ScheduleCard), matching: f);
+    final quickAdd = find.byKey(const ValueKey('schedule-quick-add'));
+
+    /// The real app on Home without pumpAndSettle: fixed 100ms steps.
+    Future<void> pumpHome(WidgetTester tester, double width, double textScale) async {
+      await pumpApp(tester, width, textScale: textScale, settle: false);
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+
+    /// Header, quick-add field and "Daha fazla" are drawn; targets >= 48x48;
+    /// the card stays inside the window.
+    void expectCardFrame(WidgetTester tester, double width, String label) {
+      expect(inSchedule(find.text(ScheduleCard.title)), findsOneWidget, reason: label);
+      expect(drawnLines(tester, inSchedule(find.text(ScheduleCard.title))), 1, reason: label);
+      expectTapTarget(tester, find.byKey(const ValueKey('schedule-card-add')), '$label add');
+      expectTapTarget(tester, find.byKey(const ValueKey('schedule-card-more')), '$label more');
+      expect(tester.getSize(quickAdd).height, greaterThanOrEqualTo(48), reason: label);
+      final card = tester.getRect(find.byType(ScheduleCard));
+      expect(card.left, greaterThanOrEqualTo(0), reason: label);
+      expect(card.right, lessThanOrEqualTo(width + 0.5), reason: label);
+    }
+
+    for (final width in _widths) {
+      for (final textScale in _textScales) {
+        final label = 'width ${width.toInt()}px, textScale $textScale';
+
+        testWidgets('filled: 8 of 11 rows, "+3", 255 unbroken title, 00:00-23:59, $label',
+            (tester) async {
+          await pumpHome(tester, width, textScale);
+          expect(tester.takeException(), isNull, reason: label);
+          expectCardFrame(tester, width, label);
+
+          final rows = [6, 1, 2, 3, 7, 4, 5, 200];
+          for (final id in rows) {
+            expect(inSchedule(find.byKey(ValueKey('schedule-row-$id'))), findsOneWidget);
+            final time = find.byKey(ValueKey('schedule-time-$id'));
+            expect(drawnLines(tester, time), 1, reason: '$label time $id');
+            expect(tester.renderObject<RenderParagraph>(time).didExceedMaxLines, isFalse,
+                reason: '$label time $id fits');
+            final title = find.byKey(ValueKey('schedule-title-$id'));
+            expect(drawnLines(tester, title), inInclusiveRange(1, 2), reason: '$label title $id');
+            final tap = find.byKey(ValueKey('schedule-row-tap-$id'));
+            expect(tester.getSize(tap).height, greaterThanOrEqualTo(48), reason: '$label row $id');
+            expect(tester.getRect(tap).right,
+                lessThanOrEqualTo(tester.getRect(find.byType(ScheduleCard)).right + 0.5));
+          }
+          for (final id in [201, 202, 203]) {
+            expect(find.byKey(ValueKey('schedule-row-$id')), findsNothing, reason: 'hidden $id');
+          }
+          final long = find.byKey(const ValueKey('schedule-title-3'));
+          expect(tester.widget<Text>(long).data!.runes.length, 255);
+          expect(drawnLines(tester, long), 2, reason: '$label long title lines');
+          expect(tester.renderObject<RenderParagraph>(long).didExceedMaxLines, isTrue);
+          expect(inSchedule(find.text('00:00\u201323:59')), findsOneWidget);
+          // 09:10: 00:00-23:59, 09:00-10:30 and 09:00-09:45 are current.
+          expect(inSchedule(find.text(ScheduleCard.nowLabel)), findsNWidgets(3));
+          for (final id in [6, 3, 7]) {
+            expect(drawnLines(tester, find.byKey(ValueKey('schedule-now-$id'))), 1);
+          }
+          final seeAll = find.byKey(const ValueKey('schedule-card-see-all'));
+          expectTapTarget(tester, seeAll, '$label see all');
+          expect(find.descendant(of: seeAll, matching: find.text(ScheduleCard.seeAllText(3))),
+              findsOneWidget);
+        });
+
+        testWidgets('empty, $label', (tester) async {
+          scheduleRepo.server = [];
+          await pumpHome(tester, width, textScale);
+          expect(tester.takeException(), isNull, reason: label);
+          expectCardFrame(tester, width, label);
+          expect(inSchedule(find.text(ScheduleCard.emptyText)), findsOneWidget);
+          expect(find.byKey(const ValueKey('schedule-card-see-all')), findsNothing);
+        });
+
+        testWidgets('loading, $label', (tester) async {
+          scheduleRepo.dayGate = Completer<void>();
+          addTearDown(() {
+            if (!scheduleRepo.dayGate!.isCompleted) scheduleRepo.dayGate!.complete();
+          });
+          await pumpHome(tester, width, textScale);
+          expect(tester.takeException(), isNull, reason: label);
+          expectCardFrame(tester, width, label);
+          expect(inSchedule(find.byKey(const ValueKey('schedule-skeleton'))), findsOneWidget);
+          scheduleRepo.dayGate!.complete();
+          await tester.pump(const Duration(milliseconds: 100));
+        });
+
+        testWidgets('error, $label', (tester) async {
+          const failure = NetworkFailure('timeout');
+          scheduleRepo.dayFailure = failure;
+          await pumpHome(tester, width, textScale);
+          expect(tester.takeException(), isNull, reason: label);
+          expectCardFrame(tester, width, label);
+          expect(inSchedule(find.text(userMessage(failure))), findsOneWidget);
+          expectTapTarget(tester, find.byKey(const ValueKey('schedule-card-retry')), label);
+        });
+
+        testWidgets('quick-add error message open, $label', (tester) async {
+          await pumpHome(tester, width, textScale);
+          await tester.ensureVisible(quickAdd);
+          await tester.pump();
+          await tester.enterText(quickAdd, 'kahvaltı');
+          await tester.testTextInput.receiveAction(TextInputAction.done);
+          await tester.pump();
+          expect(tester.takeException(), isNull, reason: label);
+          final message = inSchedule(find.text(quickAddFormatMessage));
+          expect(message, findsOneWidget);
+          expect(drawnLines(tester, message), inInclusiveRange(1, 3), reason: label);
+          expect(tester.getRect(message).right,
+              lessThanOrEqualTo(tester.getRect(find.byType(ScheduleCard)).right + 0.5));
+          expect(scheduleRepo.createBodies, isEmpty);
+          expectCardFrame(tester, width, label);
+        });
+      }
+    }
+  });
 
   group('Projects card states have no overflow on Home', () {
     Finder inProjects(Finder f) => find.descendant(of: find.byType(ProjectsCard), matching: f);

@@ -23,6 +23,9 @@ import 'package:varys/features/projects/presentation/projects_screen.dart';
 import 'package:varys/features/routines/domain/routine.dart';
 import 'package:varys/features/routines/presentation/routine_edit_screen.dart';
 import 'package:varys/features/routines/presentation/routines_screen.dart';
+import 'package:varys/features/schedule/domain/schedule_block.dart';
+import 'package:varys/features/schedule/presentation/schedule_edit_screen.dart';
+import 'package:varys/features/schedule/presentation/schedule_screen.dart';
 import 'package:varys/features/settings/presentation/settings_screen.dart';
 import 'package:varys/features/varys_chat/presentation/varys_chat_screen.dart';
 import 'package:varys/shared/widgets/back_arrow.dart';
@@ -55,6 +58,9 @@ class AppRouter {
   static const String projectsEditPath = '/projects/edit';
   static const String tasksNewPath = '/tasks/new';
   static const String tasksEditPath = '/tasks/edit';
+  static const String schedulePath = '/schedule';
+  static const String scheduleNewPath = '/schedule/new';
+  static const String scheduleEditPath = '/schedule/edit';
   static const String eisenhowerRoutePath = '/eisenhower/:quadrant';
 
   /// `/eisenhower/<segment>` for [quadrant] (opened with push from Home).
@@ -262,6 +268,38 @@ class AppRouter {
               child: extra is Routine
                   ? RoutineEditScreen(key: ValueKey('routine-edit-${extra.id}'), routine: extra)
                   : const RoutineEditUnavailablePage(),
+            );
+          },
+        ),
+        // Schedule page: opened by push from the Home card. Not in the menu.
+        GoRoute(
+          path: schedulePath,
+          name: 'schedule',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: ScheduleScreen(),
+          ),
+        ),
+        // Schedule block create form: needs no extra.
+        GoRoute(
+          path: scheduleNewPath,
+          name: 'schedule-new',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: ScheduleEditScreen(),
+          ),
+        ),
+        // Schedule block edit form: the ScheduleBlock must come as extra.
+        // Anything else (null, wrong type) shows an error page; no silent
+        // fallback to create and no redirect (a redirect on push adds a
+        // second /home).
+        GoRoute(
+          path: scheduleEditPath,
+          name: 'schedule-edit',
+          pageBuilder: (context, state) {
+            final extra = state.extra;
+            return NoTransitionPage(
+              child: extra is ScheduleBlock
+                  ? ScheduleEditScreen(key: ValueKey('schedule-edit-${extra.id}'), block: extra)
+                  : const ScheduleEditUnavailablePage(),
             );
           },
         ),

@@ -42,11 +42,25 @@ class RecurrenceFormState {
     this.intervalDays,
   });
 
-  factory RecurrenceFormState.fromRoutine(Routine routine) => RecurrenceFormState(
+  factory RecurrenceFormState.fromRoutine(Routine routine) => RecurrenceFormState.fromFields(
         type: routine.recurrenceType,
-        days: {...?routine.daysOfWeek},
+        daysOfWeek: routine.daysOfWeek,
         dayOfMonth: routine.dayOfMonth,
         intervalDays: routine.intervalDays,
+      );
+
+  /// From stored recurrence fields (any model with the routine recurrence shape).
+  factory RecurrenceFormState.fromFields({
+    required RecurrenceType type,
+    List<int>? daysOfWeek,
+    int? dayOfMonth,
+    int? intervalDays,
+  }) =>
+      RecurrenceFormState(
+        type: type,
+        days: {...?daysOfWeek},
+        dayOfMonth: dayOfMonth,
+        intervalDays: intervalDays,
       );
 
   final RecurrenceType type;
@@ -178,6 +192,21 @@ class RoutineChanges {
 PlanField<T> _setOrClear<T>(T? value) =>
     value == null ? PlanField<T>.clear() : PlanField<T>.set(value);
 
+/// True when the effective rule of [form] differs from the stored fields.
+bool recurrenceRuleChanged({
+  required RecurrenceType type,
+  List<int>? daysOfWeek,
+  int? dayOfMonth,
+  int? intervalDays,
+  required RecurrenceFormState form,
+}) {
+  final storedDays = daysOfWeek == null ? null : (List<int>.of(daysOfWeek)..sort());
+  return form.type != type ||
+      !listEquals(form.effectiveDays, storedDays) ||
+      form.effectiveDayOfMonth != dayOfMonth ||
+      form.effectiveIntervalDays != intervalDays;
+}
+
 /// What changed between [original] and the form. Title/description are
 /// compared trimmed; an empty description clears it. If the recurrence rule
 /// changed, the type and all three recurrence fields are sent (unrelated
@@ -196,12 +225,13 @@ RoutineChanges computeChanges(
       ? const PlanField<String>.unset()
       : (d.isEmpty ? const PlanField<String>.clear() : PlanField.set(d));
 
-  final originalDays =
-      original.daysOfWeek == null ? null : (List<int>.of(original.daysOfWeek!)..sort());
-  final recurrenceChanged = recurrence.type != original.recurrenceType ||
-      !listEquals(recurrence.effectiveDays, originalDays) ||
-      recurrence.effectiveDayOfMonth != original.dayOfMonth ||
-      recurrence.effectiveIntervalDays != original.intervalDays;
+  final recurrenceChanged = recurrenceRuleChanged(
+    type: original.recurrenceType,
+    daysOfWeek: original.daysOfWeek,
+    dayOfMonth: original.dayOfMonth,
+    intervalDays: original.intervalDays,
+    form: recurrence,
+  );
 
   if (!recurrenceChanged) {
     return RoutineChanges(title: titleField, description: descriptionField);
@@ -237,22 +267,36 @@ String monthDaySuffix(int day) {
 String monthDayLabel(int day) => "Ayın $day'${monthDaySuffix(day)}";
 
 /// Short Turkish summary of a routine's recurrence for the list.
-String recurrenceSummary(Routine routine) {
-  switch (routine.recurrenceType) {
+String recurrenceSummary(Routine routine) => recurrenceSummaryOf(
+      routine.recurrenceType,
+      daysOfWeek: routine.daysOfWeek,
+      dayOfMonth: routine.dayOfMonth,
+      intervalDays: routine.intervalDays,
+    );
+
+/// Short Turkish summary of stored recurrence fields ("Her gün", "Pzt, Çar",
+/// "Ayın 15'i", "Her 3 günde bir").
+String recurrenceSummaryOf(
+  RecurrenceType type, {
+  List<int>? daysOfWeek,
+  int? dayOfMonth,
+  int? intervalDays,
+}) {
+  switch (type) {
     case RecurrenceType.daily:
       return 'Her gün';
     case RecurrenceType.weekly:
-      final days = [...?routine.daysOfWeek]..sort();
+      final days = [...?daysOfWeek]..sort();
       final names = [
         for (final d in days)
           if (d >= 0 && d < 7) weekdayShortNames[d],
       ];
       return names.isEmpty ? 'Haftalık' : names.join(', ');
     case RecurrenceType.monthly:
-      final d = routine.dayOfMonth;
+      final d = dayOfMonth;
       return d == null ? 'Aylık' : monthDayLabel(d);
     case RecurrenceType.interval:
-      final i = routine.intervalDays;
+      final i = intervalDays;
       return i == null ? 'Aralıklı' : 'Her $i günde bir';
   }
 }

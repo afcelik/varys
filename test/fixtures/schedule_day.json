@@ -1,0 +1,90 @@
+[
+  {
+    "id": 6,
+    "title": "Tüm gün nöbet",
+    "description": "Telefon açık",
+    "start_time": "00:00",
+    "end_time": "23:59",
+    "recurrence_type": "daily",
+    "days_of_week": null,
+    "day_of_month": null,
+    "interval_days": null,
+    "start_date": "2026-11-02",
+    "created_at": "2026-11-20T19:45:39",
+    "updated_at": "2026-11-20T19:45:39"
+  },
+  {
+    "id": 1,
+    "title": "Sabah koşusu",
+    "description": "Sahil yolu, hafif tempo",
+    "start_time": "06:30",
+    "end_time": "07:15",
+    "recurrence_type": "daily",
+    "days_of_week": null,
+    "day_of_month": null,
+    "interval_days": null,
+    "start_date": "2026-11-02",
+    "created_at": "2026-11-20T19:45:39",
+    "updated_at": "2026-11-20T19:45:39"
+  },
+  {
+    "id": 2,
+    "title": "Kahvaltı",
+    "description": null,
+    "start_time": "08:30",
+    "end_time": "09:00",
+    "recurrence_type": "weekly",
+    "days_of_week": [
+      0,
+      2,
+      4
+    ],
+    "day_of_month": null,
+    "interval_days": null,
+    "start_date": "2026-11-02",
+    "created_at": "2026-11-20T19:45:39",
+    "updated_at": "2026-11-20T19:45:39"
+  },
+  {
+    "id": 3,
+    "title": "GünlükİşlerİçinÇokUzunBaşlıkGünlükİşlerİçinÇokUzunBaşlıkGünlükİşlerİçinÇokUzunBaşlıkGünlükİşlerİçinÇokUzunBaşlıkGünlükİşlerİçinÇokUzunBaşlıkGünlükİşlerİçinÇokUzunBaşlıkGünlükİşlerİçinÇokUzunBaşlıkGünlükİşlerİçinÇokUzunBaşlıkGünlükİşlerİçinÇokUzunBaşlıkGün",
+    "description": "Uzun başlıklı blok",
+    "start_time": "09:00",
+    "end_time": "10:30",
+    "recurrence_type": "daily",
+    "days_of_week": null,
+    "day_of_month": null,
+    "interval_days": null,
+    "start_date": "2026-11-02",
+    "created_at": "2026-11-20T19:45:39",
+    "updated_at": "2026-11-20T19:45:39"
+  },
+  {
+    "id": 7,
+    "title": "Toplantı hazırlığı",
+    "description": null,
+    "start_time": "09:00",
+    "end_time": "09:45",
+    "recurrence_type": "daily",
+    "days_of_week": null,
+    "day_of_month": null,
+    "interval_days": null,
+    "start_date": "2026-11-02",
+    "created_at": "2026-11-20T19:45:39",
+    "updated_at": "2026-11-20T19:45:39"
+  },
+  {
+    "id": 5,
+    "title": "Bitki sulama",
+    "description": null,
+    "start_time": "18:00",
+    "end_time": "18:15",
+    "recurrence_type": "interval",
+    "days_of_week": null,
+    "day_of_month": null,
+    "interval_days": 3,
+    "start_date": "2026-11-02",
+    "created_at": "2026-11-20T19:45:39",
+    "updated_at": "2026-11-20T19:45:39"
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "detail": [
+    {
+      "type": "value_error",
+      "loc": [
+        "body",
+        "start_time"
+      ],
+      "msg": "Value error, time must be HH:MM (00:00-23:59)",
+      "input": "08:30:00",
+      "ctx": {
+        "error": {}
+      }
+    }
+  ]
+}
