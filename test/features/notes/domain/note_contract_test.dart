@@ -91,14 +91,20 @@ void main() {
       expect(n.tags, isEmpty);
     });
 
-    test('GET /notes/random filled', () {
-      final n = Note.fromJson(read('note_random.json') as Map<String, dynamic>);
-      expect(n.id, 5);
-      expect(n.body, isNull);
+    test('POST /notes/of-day filled: body and normalized tags', () {
+      final n = Note.fromJson(read('note_of_day.json') as Map<String, dynamic>);
+      expect(n.id, 1);
+      expect(n.title, 'İş toplantısı notları');
+      expect(n.body, 'Gündem: bütçe\nKarar: ışık sistemi yenilenecek');
+      expect(n.isFavorite, isFalse);
+      expect(n.tags, ['iş', 'öğrenim', 'ışık']);
+      expect(n.createdAt, DateTime(2026, 11, 20, 5, 34, 57));
+      expect(n.updatedAt, DateTime(2026, 11, 20, 5, 34, 57));
+      expect(Note.fromJson(n.toJson()), n);
     });
 
-    test('GET /notes/random with no notes is a JSON null', () {
-      expect(read('note_random_null.json'), isNull);
+    test('POST /notes/of-day with no notes is a JSON null', () {
+      expect(read('note_of_day_null.json'), isNull);
     });
   });
 

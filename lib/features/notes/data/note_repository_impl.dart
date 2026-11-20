@@ -42,10 +42,11 @@ class NoteRepositoryImpl implements NoteRepository {
   }
 
   @override
-  Future<Either<Failure, Note?>> getRandomNote(DateTime day) {
-    return _guard<Note?>('getRandomNote', () async {
-      final response = await _apiClient.get<dynamic>(
-        '$_basePath/random',
+  Future<Either<Failure, Note?>> getNoteOfDay(DateTime day) {
+    return _guard<Note?>('getNoteOfDay', () async {
+      // The day goes in the query; the request has no body.
+      final response = await _apiClient.post<dynamic>(
+        '$_basePath/of-day',
         queryParameters: {'day': formatDateForApi(day)},
       );
       final data = response.data;

@@ -103,7 +103,7 @@ void main() {
 
   tearDown(() => container.dispose());
 
-  /// Also keeps the Home "Rastgele Not" card alive.
+  /// Also keeps the Home "Günün Notu" card alive.
   Future<void> listenHomeCard() async {
     container.listen(todayNoteProvider, (_, _) {});
     await _flush();
@@ -116,7 +116,7 @@ void main() {
             .map((e) => TagCount.fromJson(e as Map<String, dynamic>))
             .toList();
     expect(overview().tags, tagsFixture);
-    expect((repo.listCalls, repo.tagsCalls, repo.randomCalls), (1, 1, 0));
+    expect((repo.listCalls, repo.tagsCalls, repo.ofDayCalls), (1, 1, 0));
   });
 
   test('countTags recounts the real list exactly as the server counts and sorts it', () {
@@ -146,7 +146,7 @@ void main() {
   test('search, tag and favorite filter changes send no request', () async {
     await listenHomeCard();
     container.listen(notesFilterProvider, (_, _) {});
-    final calls = (repo.listCalls, repo.tagsCalls, repo.randomCalls);
+    final calls = (repo.listCalls, repo.tagsCalls, repo.ofDayCalls);
     final filter = container.read(notesFilterProvider.notifier);
     List<int> visible() => filterNotes(
       overview().notes,
@@ -172,7 +172,7 @@ void main() {
     await _flush();
     expect(visible(), [5, 4, 3, 2, 1]);
 
-    expect((repo.listCalls, repo.tagsCalls, repo.randomCalls), calls);
+    expect((repo.listCalls, repo.tagsCalls, repo.ofDayCalls), calls);
   });
 
   group('createNote', () {
@@ -203,7 +203,7 @@ void main() {
 
     test('success: Home card invalidated exactly once, one silent refresh, no loop', () async {
       await listenHomeCard();
-      expect((repo.listCalls, repo.tagsCalls, repo.randomCalls), (1, 1, 1));
+      expect((repo.listCalls, repo.tagsCalls, repo.ofDayCalls), (1, 1, 1));
 
       final future = notifier().createNote(_draft);
       await _flush();
@@ -213,17 +213,17 @@ void main() {
       await _flush();
 
       // One page refresh (notes + tags) and one card reload.
-      expect((repo.listCalls, repo.tagsCalls, repo.randomCalls), (2, 2, 2));
+      expect((repo.listCalls, repo.tagsCalls, repo.ofDayCalls), (2, 2, 2));
 
       // Nothing keeps going on its own: no loop.
       await _flush();
       await _flush();
-      expect((repo.listCalls, repo.tagsCalls, repo.randomCalls), (2, 2, 2));
+      expect((repo.listCalls, repo.tagsCalls, repo.ofDayCalls), (2, 2, 2));
 
       // Reloading the card (its "Tekrar dene") does not reload the page list.
       container.invalidate(todayNoteProvider);
       await _flush();
-      expect((repo.listCalls, repo.tagsCalls, repo.randomCalls), (2, 2, 3));
+      expect((repo.listCalls, repo.tagsCalls, repo.ofDayCalls), (2, 2, 3));
     });
 
     test('silent refresh replaces locally recounted tag counts with the server values', () async {
@@ -256,7 +256,7 @@ void main() {
       expect(await future, const Left<Failure, Note>(_serverError));
       await _flush();
       expect(ids(), [5, 4, 3, 2, 1]);
-      expect((repo.listCalls, repo.tagsCalls, repo.randomCalls), (1, 1, 1));
+      expect((repo.listCalls, repo.tagsCalls, repo.ofDayCalls), (1, 1, 1));
     });
   });
 
@@ -313,7 +313,7 @@ void main() {
       expect(result, const Right<Failure, Note?>(null));
       await _flush();
       expect(updates, isEmpty);
-      expect((repo.listCalls, repo.tagsCalls, repo.randomCalls), (1, 1, 1));
+      expect((repo.listCalls, repo.tagsCalls, repo.ofDayCalls), (1, 1, 1));
     });
 
     test('404 (deleted elsewhere): Left with fixed text; silent refresh drops the row', () async {
@@ -390,10 +390,10 @@ void main() {
       expect(overview().tags.any((t) => t.name == 'iş'), isFalse);
       expect(countOf('öğrenim'), 1);
       await _flush();
-      expect(repo.randomCalls, 2);
+      expect(repo.ofDayCalls, 2);
       repo.listGate!.complete();
       await _flush();
-      expect(repo.randomCalls, 2);
+      expect(repo.ofDayCalls, 2);
     });
 
     test('double tap: one DELETE, both callers get the same result', () async {

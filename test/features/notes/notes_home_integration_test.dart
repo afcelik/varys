@@ -1,8 +1,11 @@
 // Notes ↔ Home on the real app: real router, real HomeScreen, real
 // notifiers; only the repositories are fakes. The note fake behaves like the
-// server (note of the day = notes by id [ordinal % n], null without notes).
-// Creating, editing and deleting a note on /notes updates the Home
-// "Rastgele Not" card; the other Home cards are not reloaded.
+// server's POST /notes/of-day (the day's pick is stored; a deleted pick is
+// replaced; null without notes). Creating, editing and deleting a note
+// updates the Home "Günün Notu" card (one more POST, no skeleton); tapping
+// the card opens the edit page; the other Home cards are not reloaded.
+
+import 'dart:async';
 
 import 'package:dartz/dartz.dart' hide Task;
 import 'package:flutter/material.dart';
@@ -103,6 +106,41 @@ void main() {
 
   Future<void> back(WidgetTester tester) => tapAndSettle(tester, find.byIcon(Icons.arrow_back));
 
+  final skeleton = find.byKey(const ValueKey('random-note-skeleton'));
+
+  /// Counts the first load of the other Home cards; [expectOtherCardsUntouched]
+  /// then checks none of them was loaded again.
+  int otherCardsLoaded() {
+    verify(() => planRepo.getPlan(any())).called(1);
+    verify(() => routineRepo.getRoutinesForDay(any())).called(1);
+    expect(projectRepo.activeCalls, 1);
+    return projectRepo.activeCalls;
+  }
+
+  void expectOtherCardsUntouched(int projectCalls) {
+    verifyNever(() => planRepo.getPlan(any()));
+    verifyNever(() => routineRepo.getRoutinesForDay(any()));
+    expect(projectRepo.activeCalls, projectCalls);
+    expect(find.byType(ProjectsCard), findsOneWidget);
+    expect(find.byType(RoutinesCard), findsOneWidget);
+  }
+
+  /// Parks the next POST /notes/of-day; returns the gate to release it.
+  Completer<void> parkNoteOfDay() {
+    final gate = Completer<void>();
+    noteRepo.ofDayGate = gate;
+    addTearDown(() {
+      if (!gate.isCompleted) gate.complete();
+    });
+    return gate;
+  }
+
+  Future<void> release(WidgetTester tester, Completer<void> gate) async {
+    noteRepo.ofDayGate = null;
+    gate.complete();
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('create on /notes → Home card shows it; edit → new title; delete → '
       '"Henüz not yok"; other Home cards are not reloaded', (tester) async {
     await pumpApp(tester);
@@ -168,12 +206,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('with several notes the card shows the server pick for the day, and a '
-      'new note changes n (the pick follows the server rule)', (tester) async {
-    noteRepo.server = notesFixture(); // ids 1..5; 2026-11-19 → index 4 → id 5
+  testWidgets('with several notes the card shows the stored pick of the day; a new note '
+      'does not change it (one more POST, same note)', (tester) async {
+    noteRepo.server = notesFixture(); // ids 1..5; fake picks the smallest unseen id → 1
     await pumpApp(tester);
-    expect(tester.widget<Text>(cardTitle).data, 'Çiçek bakımı');
-    final calls = noteRepo.randomCalls;
+    expect(tester.widget<Text>(cardTitle).data, 'İş toplantısı notları');
+    expect(noteRepo.ofDayDays, [_day]);
+    final calls = noteRepo.ofDayCalls;
 
     await tapAndSettle(tester, find.byKey(const ValueKey('random-note-more')));
     await tapAndSettle(tester, find.byKey(const ValueKey('notes-add')));
@@ -182,9 +221,12 @@ void main() {
     await tapAndSettle(tester, find.byKey(const ValueKey('note-save')));
     await back(tester);
 
-    // 739939 % 6 = 1 → the 2nd note by id (id 2, the 255-character title).
-    expect(noteRepo.randomCalls, calls + 1, reason: 'card reloaded exactly once');
-    expect(tester.widget<Text>(cardTitle).data, notesFixture().firstWhere((n) => n.id == 2).title);
+    expect(noteRepo.ofDayCalls, calls + 1, reason: 'card reloaded exactly once');
+    expect(
+      tester.widget<Text>(cardTitle).data,
+      'İş toplantısı notları',
+      reason: 'the day\'s pick is stored; a new note does not replace it',
+    );
   });
 
   testWidgets('a favorite toggle on /notes does not break the card (reloaded once)', (
@@ -192,12 +234,104 @@ void main() {
   ) async {
     noteRepo.server = [notesFixture().firstWhere((n) => n.id == 3)];
     await pumpApp(tester);
-    final calls = noteRepo.randomCalls;
+    final calls = noteRepo.ofDayCalls;
     await tapAndSettle(tester, find.byKey(const ValueKey('random-note-more')));
     await tapAndSettle(tester, find.byKey(const ValueKey('note-favorite-3')));
     expect(noteRepo.updateCalls.single.$2, {'is_favorite': true});
     await back(tester);
-    expect(noteRepo.randomCalls, calls + 1);
+    expect(noteRepo.ofDayCalls, calls + 1);
     expect(tester.widget<Text>(cardTitle).data, 'Öğrenim planı');
+  });
+
+  testWidgets('card content tap → edit form → new title → Kaydet → back on Home: the card '
+      'shows the new title after exactly one POST, never a skeleton', (tester) async {
+    noteRepo.server = notesFixture(); // the day's pick: id 1
+    await pumpApp(tester);
+    final projectCalls = otherCardsLoaded();
+    expect(tester.widget<Text>(cardTitle).data, 'İş toplantısı notları');
+    final calls = noteRepo.ofDayCalls;
+
+    await tapAndSettle(tester, inCard(find.byKey(const ValueKey('random-note-open'))));
+    expect(find.byType(NoteEditScreen), findsOneWidget);
+    final title = find.byKey(const ValueKey('note-title-field'));
+    expect(tester.widget<TextField>(title).controller!.text, 'İş toplantısı notları');
+    await tester.enterText(title, 'Yeni başlık');
+    await tester.pumpAndSettle();
+
+    final gate = parkNoteOfDay();
+    await tapAndSettle(tester, find.byKey(const ValueKey('note-save')));
+    expect(noteRepo.updateCalls.single.$1, 1);
+    expect(noteRepo.updateCalls.single.$2, {'title': 'Yeni başlık'});
+    // The form closed itself; Home is back while the card reloads.
+    expect(find.byType(NoteEditScreen), findsNothing);
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(noteRepo.ofDayCalls, calls + 1);
+    expect(skeleton, findsNothing, reason: 'the old note stays while reloading');
+    expect(tester.widget<Text>(cardTitle).data, 'İş toplantısı notları');
+
+    await release(tester, gate);
+    expect(tester.widget<Text>(cardTitle).data, 'Yeni başlık');
+    expect(skeleton, findsNothing);
+    expect(noteRepo.ofDayCalls, calls + 1, reason: 'exactly one POST, no loop');
+    expect(noteRepo.ofDayDays.toSet(), {_day});
+    expectOtherCardsUntouched(projectCalls);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('two notes: card shows A → "Daha fazla" → delete A on /notes → back: the card '
+      'shows B after one POST; A is gone; no skeleton', (tester) async {
+    final fixture = notesFixture();
+    final a = fixture.firstWhere((n) => n.id == 1);
+    final b = fixture.firstWhere((n) => n.id == 2);
+    noteRepo.server = [a, b];
+    await pumpApp(tester);
+    final projectCalls = otherCardsLoaded();
+    expect(tester.widget<Text>(cardTitle).data, a.title);
+    final calls = noteRepo.ofDayCalls;
+
+    await tapAndSettle(tester, find.byKey(const ValueKey('random-note-more')));
+    expect(find.byType(NotesScreen), findsOneWidget);
+    await tapAndSettle(tester, find.byKey(const ValueKey('note-delete-1')));
+    final gate = parkNoteOfDay();
+    await tapAndSettle(tester, find.byKey(const ValueKey('note-delete-confirm')));
+    expect(noteRepo.deleteIds, [1]);
+    expect(noteRepo.ofDayCalls, calls + 1);
+
+    await back(tester);
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(skeleton, findsNothing, reason: 'reloading keeps the old content, no skeleton');
+
+    await release(tester, gate);
+    expect(tester.widget<Text>(cardTitle).data, b.title);
+    expect(inCard(find.text(a.title)), findsNothing, reason: 'the deleted note is not shown');
+    expect(skeleton, findsNothing);
+    expect(noteRepo.ofDayCalls, calls + 1);
+    expect(noteRepo.dayEntries[_day]!.noteId, b.id, reason: 'server replaced the day\'s pick');
+    expectOtherCardsUntouched(projectCalls);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a single note deleted on /notes → back: "Henüz not yok" after one POST', (
+    tester,
+  ) async {
+    final only = notesFixture().firstWhere((n) => n.id == 3);
+    noteRepo.server = [only];
+    await pumpApp(tester);
+    final projectCalls = otherCardsLoaded();
+    expect(tester.widget<Text>(cardTitle).data, only.title);
+    final calls = noteRepo.ofDayCalls;
+
+    await tapAndSettle(tester, find.byKey(const ValueKey('random-note-more')));
+    await tapAndSettle(tester, find.byKey(const ValueKey('note-delete-3')));
+    await tapAndSettle(tester, find.byKey(const ValueKey('note-delete-confirm')));
+    await back(tester);
+
+    expect(inCard(find.text(RandomNoteCard.emptyText)), findsOneWidget);
+    expect(inCard(find.text(only.title)), findsNothing);
+    expect(cardTitle, findsNothing);
+    expect(inCard(find.byKey(const ValueKey('random-note-open'))), findsNothing);
+    expect(noteRepo.ofDayCalls, calls + 1);
+    expectOtherCardsUntouched(projectCalls);
+    expect(tester.takeException(), isNull);
   });
 }

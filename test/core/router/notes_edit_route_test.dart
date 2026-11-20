@@ -5,6 +5,8 @@
 //   (no silent fallback). Not a redirect: a redirect on push adds a second
 //   /home.
 // - From /notes, tapping a row opens the edit form for that note.
+// - From Home, tapping the "Günün Notu" card content opens the edit form
+//   for the note of the day.
 
 import 'package:dartz/dartz.dart' hide Task;
 import 'package:flutter/material.dart';
@@ -20,6 +22,7 @@ import 'package:varys/features/home/data/daily_plan_repository.dart';
 import 'package:varys/features/home/domain/daily_plan.dart';
 import 'package:varys/features/home/domain/today_provider.dart';
 import 'package:varys/features/home/presentation/home_screen.dart';
+import 'package:varys/features/home/presentation/widgets/random_note_card.dart';
 import 'package:varys/features/notes/data/note_repository_impl.dart';
 import 'package:varys/features/notes/presentation/note_edit_screen.dart';
 import 'package:varys/features/notes/presentation/notes_screen.dart';
@@ -222,5 +225,36 @@ void main() {
     await tester.tap(find.byIcon(Icons.arrow_back));
     await tester.pumpAndSettle();
     expect(find.byType(NotesScreen), findsOneWidget);
+  });
+
+  testWidgets('Home "Günün Notu" content tap pushes /notes/edit with that note; BackArrow '
+      'returns to a single Home', (tester) async {
+    await pumpApp(tester);
+    final open = find.descendant(
+      of: find.byType(RandomNoteCard),
+      matching: find.byKey(const ValueKey('random-note-open')),
+    );
+    await tester.ensureVisible(open);
+    await tester.pumpAndSettle();
+    final shown = tester.widget<Text>(find.byKey(const ValueKey('random-note-title'))).data;
+    await tester.tap(open);
+    await tester.pumpAndSettle();
+
+    final screen = tester.widget<NoteEditScreen>(find.byType(NoteEditScreen));
+    expect(screen.note, isNotNull);
+    expect(screen.note!.title, shown);
+    expect(noteRepo.dayEntries[_day]!.noteId, screen.note!.id, reason: 'the card note');
+    expect(find.text(NoteEditScreen.editTitle), findsOneWidget);
+    expect(fieldText(tester, 'note-title-field'), shown);
+    expect(find.byType(NavigationBar), findsNothing, reason: 'outside the shell');
+    expect(homeCount(), 1);
+    final pushed = stackMatches().whereType<ImperativeRouteMatch>().toList();
+    expect(pushed, hasLength(1));
+    expect(pushed.single.route.path, AppRouter.notesEditPath);
+
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+    await expectOnlyHome(tester);
+    expect(find.text(shown!), findsOneWidget, reason: 'card still shows the note');
   });
 }

@@ -8,8 +8,9 @@
 // focus slots empty, with everything empty, and with the plan in its error
 // and loading states; the routines card in its empty, loading and error states;
 // the projects card filled (long titles, progress null/0/100, target date set
-// and null), empty, loading and error; the "Rastgele Not" card filled (an
-// unbroken 255-character title, a 60-line body, 6 tags), empty, loading and
+// and null), empty, loading and error; the "Günün Notu" card filled (an
+// unbroken 255-character title, a 60-line body, 6 tags; the content tap
+// target at least 48 high and apart from "Daha fazla"), empty, loading and
 // error. The /projects skeleton page is drawn at 360px with text scale 1.0
 // and 1.5.
 
@@ -857,10 +858,12 @@ void main() {
     }
   });
 
-  group('Random note card states have no overflow on Home', () {
+  group('Günün Notu card states have no overflow on Home', () {
     Finder inCard(Finder f) => find.descendant(of: find.byType(RandomNoteCard), matching: f);
     final title = find.byKey(const ValueKey('random-note-title'));
     final body = find.byKey(const ValueKey('random-note-body'));
+    final open = find.byKey(const ValueKey('random-note-open'));
+    final more = find.byKey(const ValueKey('random-note-more'));
 
     void expectCardFrame(WidgetTester tester, String label) {
       expect(inCard(find.text(RandomNoteCard.title)), findsOneWidget, reason: label);
@@ -883,6 +886,12 @@ void main() {
           expect(drawnLines(tester, body), RandomNoteCard.bodyMaxLines, reason: '$label body');
           expect(tester.renderObject<RenderParagraph>(body).didExceedMaxLines, isTrue);
           expect(inCard(find.text('+3')), findsOneWidget, reason: label);
+          // Content tap target: at least 48 high, inside the card, separate
+          // from "Daha fazla" (not nested, rects do not intersect).
+          final openRect = tester.getRect(open);
+          expect(openRect.height, greaterThanOrEqualTo(48), reason: '$label content height');
+          expect(find.descendant(of: open, matching: more), findsNothing, reason: label);
+          expect(openRect.overlaps(tester.getRect(more)), isFalse, reason: '$label rects');
           final cardRect = tester.getRect(find.byType(RandomNoteCard));
           for (final f in [title, body]) {
             final r = tester.getRect(f);
@@ -897,13 +906,14 @@ void main() {
           expect(tester.takeException(), isNull, reason: label);
           expectCardFrame(tester, label);
           expect(inCard(find.text(RandomNoteCard.emptyText)), findsOneWidget);
+          expect(open, findsNothing, reason: '$label no content tap target');
           expectTapTarget(tester, find.byKey(const ValueKey('random-note-add')), '$label add');
         });
 
         testWidgets('loading, $label', (tester) async {
-          noteRepo.randomGate = Completer<void>();
+          noteRepo.ofDayGate = Completer<void>();
           addTearDown(() {
-            if (!noteRepo.randomGate!.isCompleted) noteRepo.randomGate!.complete();
+            if (!noteRepo.ofDayGate!.isCompleted) noteRepo.ofDayGate!.complete();
           });
           await pumpApp(tester, width, textScale: textScale, settle: false);
           expect(tester.takeException(), isNull, reason: label);
@@ -916,16 +926,18 @@ void main() {
           expectCardFrame(tester, label);
           expect(inCard(find.byKey(const ValueKey('random-note-skeleton'))), findsOneWidget);
           expect(title, findsNothing);
+          expect(open, findsNothing, reason: '$label no content tap target');
         });
 
         testWidgets('error, $label', (tester) async {
           const failure = NetworkFailure('timeout');
-          noteRepo.randomFailure = failure;
+          noteRepo.ofDayFailure = failure;
           await pumpApp(tester, width, textScale: textScale);
           expect(tester.takeException(), isNull, reason: label);
           expectCardFrame(tester, label);
           expect(inCard(find.text(userMessage(failure))), findsOneWidget);
           expectTapTarget(tester, find.byKey(const ValueKey('random-note-retry')), '$label retry');
+          expect(open, findsNothing, reason: '$label no content tap target');
           // The error stays in the card: the rest of Home is drawn.
           expect(find.byType(ProjectsCard), findsOneWidget);
           expect(find.byType(InboxCard), findsOneWidget);

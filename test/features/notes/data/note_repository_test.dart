@@ -104,39 +104,105 @@ void main() {
     });
   });
 
-  group('getRandomNote', () {
-    void stubRandom(Object? data) {
+  group('getNoteOfDay', () {
+    void stubOfDay(Object? data) {
       when(
-        () => api.get<dynamic>(any(), queryParameters: any(named: 'queryParameters')),
-      ).thenAnswer((_) async => _ok<dynamic>('/notes/random', 200, data));
+        () => api.post<dynamic>(
+          any(),
+          data: any(named: 'data'),
+          queryParameters: any(named: 'queryParameters'),
+        ),
+      ).thenAnswer((_) async => _ok<dynamic>('/notes/of-day', 200, data));
     }
 
-    test('GET /notes/random?day=YYYY-MM-DD (date only, no time, no zone)', () async {
-      stubRandom(_read('note_random.json'));
-      final note = _right(await repository.getRandomNote(DateTime(2026, 11, 9, 23, 59)));
-      expect(note!.id, 5);
+    void stubOfDayError(DioException e) {
+      when(
+        () => api.post<dynamic>(
+          any(),
+          data: any(named: 'data'),
+          queryParameters: any(named: 'queryParameters'),
+        ),
+      ).thenThrow(e);
+    }
+
+    test('POST /notes/of-day?day=YYYY-MM-DD (date only, no time, no zone), no body', () async {
+      stubOfDay(_read('note_of_day.json'));
+      await repository.getNoteOfDay(DateTime(2026, 11, 20, 23, 59));
       final captured = verify(
-        () => api.get<dynamic>(captureAny(), queryParameters: captureAny(named: 'queryParameters')),
+        () => api.post<dynamic>(
+          captureAny(),
+          data: captureAny(named: 'data'),
+          queryParameters: captureAny(named: 'queryParameters'),
+        ),
       ).captured;
-      expect(captured[0], '/notes/random');
-      expect(captured[1], {'day': '2026-11-09'});
+      expect(captured[0], '/notes/of-day');
+      expect(captured[1], isNull, reason: 'the day goes in the query, never in a body');
+      expect(captured[2], {'day': '2026-11-20'});
+      // The old GET /notes/random is no longer called by the client.
+      verifyNever(() => api.get<dynamic>(any(), queryParameters: any(named: 'queryParameters')));
+    });
+
+    test('filled body → Right(Note) with body and normalized tags', () async {
+      stubOfDay(_read('note_of_day.json'));
+      final note = _right(await repository.getNoteOfDay(DateTime(2026, 11, 20)));
+      expect(note!.id, 1);
+      expect(note.title, 'İş toplantısı notları');
+      expect(note.body, 'Gündem: bütçe\nKarar: ışık sistemi yenilenecek');
+      expect(note.tags, ['iş', 'öğrenim', 'ışık']);
+      expect(note.isFavorite, isFalse);
     });
 
     test('200 with a null body is Right(null), not a failure', () async {
-      stubRandom(_read('note_random_null.json'));
-      final result = await repository.getRandomNote(DateTime(2026, 11, 19));
+      stubOfDay(_read('note_of_day_null.json'));
+      final result = await repository.getNoteOfDay(DateTime(2026, 11, 20));
       expect(result.isRight(), isTrue);
       expect(_right(result), isNull);
     });
 
+    test('404 → fixed message; detail never leaks', () async {
+      stubOfDayError(_bad('/notes/of-day', 404, body: {'detail': 'Not Found xyz'}));
+      final failure = _left(await repository.getNoteOfDay(DateTime(2026, 11, 20)));
+      expect(failure, isA<ServerFailure>());
+      expect((failure as ServerFailure).statusCode, 404);
+      expect(failure.userMessage, 'Kaynak bulunamadı.');
+      expect(failure.userMessage.contains('xyz'), isFalse);
+    });
+
+    test('422 (day out of range) → fixed message; detail never leaks', () async {
+      stubOfDayError(
+        _bad(
+          '/notes/of-day',
+          422,
+          body: {
+            'detail': [
+              {
+                'type': 'less_than_equal',
+                'loc': ['query', 'day'],
+                'msg': 'day too late xyz',
+              },
+            ],
+          },
+        ),
+      );
+      final failure = _left(await repository.getNoteOfDay(DateTime(2101)));
+      expect((failure as ServerFailure).statusCode, 422);
+      expect(failure.userMessage, 'Gönderilen veriler geçersiz.');
+      expect(failure.userMessage.contains('xyz'), isFalse);
+    });
+
     test('500 → ServerFailure with the fixed message', () async {
-      when(
-        () => api.get<dynamic>(any(), queryParameters: any(named: 'queryParameters')),
-      ).thenThrow(_bad('/notes/random', 500, body: {'detail': 'Internal boom'}));
-      final failure = _left(await repository.getRandomNote(DateTime(2026, 11, 19)));
+      stubOfDayError(_bad('/notes/of-day', 500, body: {'detail': 'Internal boom'}));
+      final failure = _left(await repository.getNoteOfDay(DateTime(2026, 11, 20)));
       expect(failure, isA<ServerFailure>());
       expect(failure.userMessage, 'Sunucu hatası. Lütfen daha sonra tekrar deneyin.');
       expect(failure.userMessage.contains('boom'), isFalse);
+    });
+
+    test('timeout → NetworkFailure with the fixed message', () async {
+      stubOfDayError(_timeout('/notes/of-day'));
+      final failure = _left(await repository.getNoteOfDay(DateTime(2026, 11, 20)));
+      expect(failure, isA<NetworkFailure>());
+      expect(failure.userMessage, 'Bağlantı hatası');
     });
   });
 

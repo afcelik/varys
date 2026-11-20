@@ -12,9 +12,10 @@ abstract class NoteRepository {
   /// `GET /tags`: tags in use with their note counts.
   Future<Either<Failure, List<TagCount>>> getTags();
 
-  /// `GET /notes/random?day=YYYY-MM-DD`: the note of [day]. A `null` body
-  /// (no notes) is a valid answer: `Right(null)`, not a failure.
-  Future<Either<Failure, Note?>> getRandomNote(DateTime day);
+  /// `POST /notes/of-day?day=YYYY-MM-DD` (no body): the note of [day]. The
+  /// server stores the first pick of a day and returns it on later calls
+  /// (idempotent). A `null` body (no notes) is a valid answer: `Right(null)`.
+  Future<Either<Failure, Note?>> getNoteOfDay(DateTime day);
 
   /// `POST /notes` (201).
   Future<Either<Failure, Note>> createNote(NoteDraft draft);

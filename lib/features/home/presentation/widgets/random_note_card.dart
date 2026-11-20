@@ -7,20 +7,24 @@ import 'package:varys/features/notes/domain/note.dart';
 import 'package:varys/features/notes/presentation/today_note_notifier.dart';
 import 'package:varys/features/notes/presentation/widgets/note_tag_chips.dart';
 
-/// Home card with the note of the day ([todayNoteProvider]): title (2 lines),
-/// the first lines of the body as plain text (3 lines; Markdown marks are
-/// shown as typed), up to 3 tags and "+N". No notes → "Henüz not yok" with
-/// "Not ekle". Loading and errors stay inside this card; "Tekrar dene"
+/// Home "Günün Notu" card with the note of the day ([todayNoteProvider]):
+/// title (2 lines), the first lines of the body as plain text (3 lines;
+/// Markdown marks are shown as typed), up to 3 tags and "+N". Tapping that
+/// content (one InkWell, at least 48 high, semantics "Notu düzenle") pushes
+/// the note edit page with the Note as `extra`. No notes → "Henüz not yok"
+/// with "Not ekle". Loading and errors stay inside this card; "Tekrar dene"
 /// reloads only the card. While refreshing, the previous note stays.
-/// "Daha fazla" and "Not ekle" open the notes page with `push`.
+/// "Daha fazla" and "Not ekle" open the notes page with `push`; both sit
+/// outside the content InkWell, so they never open the edit page.
 class RandomNoteCard extends ConsumerWidget {
   const RandomNoteCard({super.key});
 
-  static const String title = 'Rastgele Not';
+  static const String title = 'Günün Notu';
   static const String emptyText = 'Henüz not yok';
   static const String addText = 'Not ekle';
   static const String moreText = 'Daha fazla';
   static const String retryText = 'Tekrar dene';
+  static const String editSemantics = 'Notu düzenle';
 
   static const int titleMaxLines = 2;
   static const int bodyMaxLines = 3;
@@ -40,7 +44,10 @@ class RandomNoteCard extends ConsumerWidget {
       final note = value.requireValue;
       body = note == null
           ? _EmptyNote(onAdd: () => context.push(AppRouter.notesPath))
-          : _NoteContent(note: note);
+          : _OpenNote(
+              onTap: () => context.push(AppRouter.notesEditPath, extra: note),
+              child: _NoteContent(note: note),
+            );
     } else {
       body = const _NoteCardSkeleton();
     }
@@ -81,6 +88,30 @@ class RandomNoteCard extends ConsumerWidget {
             body,
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The tappable content area: one InkWell around title, body and tags,
+/// at least 48 high. The card's buttons are not inside it.
+class _OpenNote extends StatelessWidget {
+  const _OpenNote({required this.onTap, required this.child});
+
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      button: true,
+      label: RandomNoteCard.editSemantics,
+      child: InkWell(
+        key: const ValueKey('random-note-open'),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: ConstrainedBox(constraints: const BoxConstraints(minHeight: 48), child: child),
       ),
     );
   }

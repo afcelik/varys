@@ -131,7 +131,7 @@ void main() {
     // Old notes: one note on the page; the Home note card fails (old error state).
     when(() => noteRepo.getNotes()).thenAnswer((_) async => Right([notes.last]));
     when(() => noteRepo.getTags()).thenAnswer((_) async => const Right([]));
-    when(() => noteRepo.getRandomNote(any())).thenAnswer((_) async => const Left(_failure));
+    when(() => noteRepo.getNoteOfDay(any())).thenAnswer((_) async => const Left(_failure));
 
     container = ProviderContainer(overrides: [
       todayProvider.overrideWith(_FixedToday.new),
@@ -180,7 +180,7 @@ void main() {
         .thenAnswer((_) async => Right(activeProjects));
     when(() => noteRepo.getNotes()).thenAnswer((_) async => Right(notes));
     when(() => noteRepo.getTags()).thenAnswer((_) async => Right(tags));
-    when(() => noteRepo.getRandomNote(any())).thenAnswer((_) async => Right(notes.first));
+    when(() => noteRepo.getNoteOfDay(any())).thenAnswer((_) async => Right(notes.first));
     await auth.updateToken(_newToken);
     await _flush();
   }
@@ -217,7 +217,7 @@ void main() {
     final notesPage = container.read(notesListProvider).requireValue;
     expect(notesPage.notes, notes, reason: 'old notes list must be gone');
     expect(notesPage.tags, tags);
-    verify(() => noteRepo.getRandomNote(_day)).called(2);
+    verify(() => noteRepo.getNoteOfDay(_day)).called(2);
     verify(() => noteRepo.getNotes()).called(2);
     verify(() => noteRepo.getTags()).called(2);
   }

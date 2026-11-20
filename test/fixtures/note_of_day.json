@@ -1,0 +1,13 @@
+{
+  "id": 1,
+  "title": "İş toplantısı notları",
+  "body": "Gündem: bütçe\nKarar: ışık sistemi yenilenecek",
+  "is_favorite": false,
+  "tags": [
+    "iş",
+    "öğrenim",
+    "ışık"
+  ],
+  "created_at": "2026-11-20T05:34:57",
+  "updated_at": "2026-11-20T05:34:57"
+}

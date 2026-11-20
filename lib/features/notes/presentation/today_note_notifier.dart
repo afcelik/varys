@@ -3,8 +3,10 @@ import 'package:varys/features/home/domain/today_provider.dart';
 import 'package:varys/features/notes/data/note_repository_impl.dart';
 import 'package:varys/features/notes/domain/note.dart';
 
-/// The note of the day for the Home "Rastgele Not" card:
-/// `GET /notes/random?day=` with the device's local day from [todayProvider].
+/// The note of the day for the Home "Günün Notu" card:
+/// `POST /notes/of-day?day=` with the device's local day from [todayProvider]
+/// (the server stores the day's pick; repeated calls return the same note
+/// unless it was deleted). A new day sends one new request.
 /// `null` means there are no notes (a valid state, not an error). On failure
 /// the state is that Failure (thrown, so `AsyncError.error` is the Failure).
 ///
@@ -22,7 +24,7 @@ class TodayNoteNotifier extends AutoDisposeAsyncNotifier<Note?> {
     final day = ref.watch(todayProvider);
     final repository = await ref.watch(noteRepositoryProvider.future);
     if (generation != _generation) throw const _Superseded();
-    final result = await repository.getRandomNote(day);
+    final result = await repository.getNoteOfDay(day);
     if (generation != _generation) throw const _Superseded();
     return result.fold((failure) => throw failure, (note) => note);
   }

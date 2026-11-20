@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:dartz/dartz.dart';
 import 'package:varys/core/errors/failure.dart';
@@ -21,16 +22,16 @@ List<Note> notesFixture() => (_read('notes_list.json') as List)
 /// Real POST /notes 201 body.
 Note createdNoteFixture() => Note.fromJson(_read('note_created.json') as Map<String, dynamic>);
 
-/// Python `date.toordinal()` of the calendar day of [d].
-int _ordinal(DateTime d) =>
-    DateTime.utc(d.year, d.month, d.day).difference(DateTime.utc(1, 1, 1)).inDays + 1;
-
 /// In-memory stand-in for the backend behind [NoteRepository], used by
 /// notifier, widget, route and integration tests. It behaves like the
 /// server: the list is newest update first, tag counts are counted from
-/// [server], the note of the day is `notes by id [ordinal(day) % n]` (null
-/// with no notes), tags are normalized and replaced as a whole, unknown ids
-/// answer 404. Every request is recorded. Gates park an answer; `on*` hooks
+/// [server], tags are normalized and replaced as a whole, unknown ids answer
+/// 404. The note of the day follows the `POST /notes/of-day` rules: the
+/// first call for a day stores a pick (later calls return it, no new pick);
+/// a deleted pick is replaced within the same cycle; a cycle shows each note
+/// once, then a new cycle starts with every note; no notes → null, nothing
+/// stored. The server picks with a seeded RNG; this fake picks the smallest
+/// candidate id, so tests depend on the rules, not on the server's choice. Every request is recorded. Gates park an answer; `on*` hooks
 /// and failures replace it.
 class FakeNoteRepository implements NoteRepository {
   FakeNoteRepository([List<Note>? initial]) : server = initial ?? notesFixture();
@@ -42,10 +43,10 @@ class FakeNoteRepository implements NoteRepository {
   List<TagCount>? tagsOverride;
 
   Completer<void>? listGate;
-  Completer<void>? randomGate;
+  Completer<void>? ofDayGate;
   Failure? listFailure;
   Failure? tagsFailure;
-  Failure? randomFailure;
+  Failure? ofDayFailure;
 
   /// Replaces one `GET /notes` answer (e.g. a parked Completer per call).
   Future<Either<Failure, List<Note>>> Function()? onList;
@@ -55,8 +56,12 @@ class FakeNoteRepository implements NoteRepository {
 
   int listCalls = 0;
   int tagsCalls = 0;
-  int randomCalls = 0;
-  final randomDays = <DateTime>[];
+  int ofDayCalls = 0;
+  final ofDayDays = <DateTime>[];
+
+  /// Stored picks per calendar day: (note id, cycle), like the server's
+  /// note_of_day table.
+  final dayEntries = <DateTime, ({int noteId, int cycle})>{};
   final createBodies = <Map<String, dynamic>>[];
   final updateCalls = <(int, Map<String, dynamic>)>[];
   final deleteIds = <int>[];
@@ -106,16 +111,40 @@ class FakeNoteRepository implements NoteRepository {
   }
 
   @override
-  Future<Either<Failure, Note?>> getRandomNote(DateTime day) async {
-    randomCalls++;
-    randomDays.add(day);
-    final gate = randomGate;
+  Future<Either<Failure, Note?>> getNoteOfDay(DateTime day) async {
+    ofDayCalls++;
+    ofDayDays.add(day);
+    final gate = ofDayGate;
     if (gate != null) await gate.future;
-    final failure = randomFailure;
+    final failure = ofDayFailure;
     if (failure != null) return Left(failure);
-    if (server.isEmpty) return const Right(null);
-    final byId = List.of(server)..sort((a, b) => a.id.compareTo(b.id));
-    return Right(byId[_ordinal(day) % byId.length]);
+    return Right(_resolveNoteOfDay(DateTime(day.year, day.month, day.day)));
+  }
+
+  Note? _resolveNoteOfDay(DateTime day) {
+    Note? alive(int id) => server.where((n) => n.id == id).firstOrNull;
+    final entry = dayEntries[day];
+    if (entry != null) {
+      final stored = alive(entry.noteId);
+      if (stored != null) return stored;
+    }
+    final active = [for (final n in server) n.id]..sort();
+    if (active.isEmpty) return null;
+    int? maxCycle() =>
+        dayEntries.isEmpty ? null : dayEntries.values.map((e) => e.cycle).reduce(max);
+    var cycle = entry?.cycle ?? maxCycle() ?? 1;
+    final shown = {
+      for (final e in dayEntries.values)
+        if (e.cycle == cycle) e.noteId,
+    };
+    var candidates = active.where((id) => !shown.contains(id)).toList();
+    if (candidates.isEmpty) {
+      cycle = (maxCycle() ?? cycle) + 1;
+      candidates = active;
+    }
+    final picked = candidates.first;
+    dayEntries[day] = (noteId: picked, cycle: cycle);
+    return alive(picked);
   }
 
   @override

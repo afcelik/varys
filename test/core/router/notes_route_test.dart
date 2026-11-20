@@ -1,5 +1,5 @@
 // /notes on the real app router and shell: opened by push from the Home
-// "Rastgele Not" card, outside the shell (no menu), BackArrow returns to a
+// "Günün Notu" card, outside the shell (no menu), BackArrow returns to a
 // single Home; a direct open (deep link / notification) also lands on a
 // single Home. Notes is not a menu destination.
 
