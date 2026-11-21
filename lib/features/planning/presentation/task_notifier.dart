@@ -183,6 +183,8 @@ class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
   }
 
   /// Toggle task completion (optimistic). Rolls back only this task on failure.
+  /// On success Home's daily plan is invalidated; for a task linked to a
+  /// project the project providers (progress) are invalidated once each.
   Future<Either<Failure, void>> toggleTaskCompletion(int taskId) async {
     final original = _findTask(taskId);
     if (original == null) return const Left(_unexpected);
@@ -201,6 +203,7 @@ class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
         (serverTask) {
           _replaceTask(serverTask);
           _syncHome();
+          if (serverTask.projectId != null) _syncProjects();
           return const Right(null);
         },
       );

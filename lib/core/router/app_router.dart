@@ -18,7 +18,9 @@ import 'package:varys/features/planning/domain/eisenhower.dart';
 import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/features/planning/presentation/planning_screen.dart';
 import 'package:varys/features/planning/presentation/task_edit_screen.dart';
+import 'package:varys/features/planning/presentation/task_new_args.dart';
 import 'package:varys/features/projects/domain/project.dart';
+import 'package:varys/features/projects/presentation/project_detail_screen.dart';
 import 'package:varys/features/projects/presentation/project_edit_screen.dart';
 import 'package:varys/features/projects/presentation/projects_screen.dart';
 import 'package:varys/features/routines/domain/routine.dart';
@@ -58,6 +60,7 @@ class AppRouter {
   static const String projectsPath = '/projects';
   static const String projectsNewPath = '/projects/new';
   static const String projectsEditPath = '/projects/edit';
+  static const String projectDetailPath = '/projects/detail';
   static const String tasksNewPath = '/tasks/new';
   static const String tasksEditPath = '/tasks/edit';
   static const String schedulePath = '/schedule';
@@ -226,14 +229,42 @@ class AppRouter {
             );
           },
         ),
-        // Task create form: opened by push from Planning; needs no extra and
-        // has no redirect. Not a menu destination.
+        // Project detail page: pushed from a /projects row or the Home card
+        // with the Project as extra (only the starting value; the page reads
+        // the current one by id). Anything else shows an error page; no
+        // redirect (a redirect on push adds a second /home). Not in the menu.
+        GoRoute(
+          path: projectDetailPath,
+          name: 'project-detail',
+          pageBuilder: (context, state) {
+            final extra = state.extra;
+            return NoTransitionPage(
+              child: extra is Project
+                  ? ProjectDetailScreen(key: ValueKey('project-detail-${extra.id}'), initial: extra)
+                  : const ProjectDetailUnavailablePage(),
+            );
+          },
+        ),
+        // Task create form: opened by push from Planning (no extra) or from
+        // the project detail page (TaskNewArgs: that project chosen). Any
+        // other extra shows an error page, checked here, never by a redirect
+        // (a redirect on push adds a second /home). Not a menu destination.
         GoRoute(
           path: tasksNewPath,
           name: 'tasks-new',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: TaskEditScreen(),
-          ),
+          pageBuilder: (context, state) {
+            final extra = state.extra;
+            return NoTransitionPage(
+              child: switch (extra) {
+                null => const TaskEditScreen(),
+                TaskNewArgs(:final projectId) => TaskEditScreen(
+                  key: ValueKey('task-new-project-$projectId'),
+                  initialProjectId: projectId,
+                ),
+                _ => const TaskEditUnavailablePage(),
+              },
+            );
+          },
         ),
         // Task edit form: the Task must come as extra (pushed from a Planning
         // row). Anything else (null, wrong type) shows an error page; no

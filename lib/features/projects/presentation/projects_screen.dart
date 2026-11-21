@@ -24,6 +24,7 @@ class ProjectsScreen extends ConsumerStatefulWidget {
   static const String targetPrefix = 'Hedef: ';
   static const String menuTooltip = 'Durum ve işlemler';
 
+  static const String editText = 'Düzenle';
   static const String activateText = 'Aktif yap';
   static const String holdText = 'Beklemeye al';
   static const String somedayText = 'İleriye al';
@@ -48,7 +49,7 @@ class ProjectsScreen extends ConsumerStatefulWidget {
 }
 
 /// Row actions of the status menu.
-enum ProjectRowAction { activate, hold, someday, complete, delete }
+enum ProjectRowAction { edit, activate, hold, someday, complete, delete }
 
 class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   /// Project ids with a status change or delete request in flight.
@@ -58,6 +59,8 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
 
   void _openEdit(Project project) => context.push(AppRouter.projectsEditPath, extra: project);
 
+  void _openDetail(Project project) => context.push(AppRouter.projectDetailPath, extra: project);
+
   void _showError(Object failure) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(userMessage(failure)), behavior: SnackBarBehavior.floating),
@@ -66,6 +69,8 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
 
   Future<void> _onAction(Project project, ProjectRowAction action) async {
     switch (action) {
+      case ProjectRowAction.edit:
+        return _openEdit(project);
       case ProjectRowAction.activate:
         return _setStatus(project, ProjectStatus.active);
       case ProjectRowAction.hold:
@@ -117,7 +122,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
           : _ProjectSections(
               overview: overview,
               busy: _busy,
-              onTap: _openEdit,
+              onTap: _openDetail,
               onAction: _onAction,
             );
     } else if (value.hasError) {
@@ -313,7 +318,7 @@ class _ProjectRow extends StatelessWidget {
   }
 }
 
-/// Status menu of a row. "Aktif yap" is absent for an active project and
+/// Status menu of a row. "Düzenle" (edit form) is always first. "Aktif yap" is absent for an active project and
 /// disabled (with the reason) when the limit is full; "Tamamla" only for a
 /// project that is not completed. "Sil" is always last.
 class _StatusMenu extends StatelessWidget {
@@ -341,6 +346,11 @@ class _StatusMenu extends StatelessWidget {
       style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
       onSelected: onSelected,
       itemBuilder: (context) => [
+        const PopupMenuItem(
+          key: ValueKey('project-action-edit'),
+          value: ProjectRowAction.edit,
+          child: Text(ProjectsScreen.editText),
+        ),
         if (status != ProjectStatus.active)
           PopupMenuItem(
             key: const ValueKey('project-action-activate'),

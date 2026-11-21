@@ -33,10 +33,18 @@ import 'package:varys/shared/widgets/back_arrow.dart';
 ///
 /// Both modes have the Eisenhower switches "Önemli" and "Acil" (edit: the
 /// task's current values; create: off, and only a switched-on flag is sent).
+///
+/// Create mode with [initialProjectId] (`/tasks/new` with TaskNewArgs): that
+/// project starts chosen and is offered even when completed. A project
+/// missing from the loaded list (deleted) falls back to "Projesiz", with no
+/// message.
 class TaskEditScreen extends ConsumerStatefulWidget {
-  const TaskEditScreen({super.key, this.task});
+  const TaskEditScreen({super.key, this.task, this.initialProjectId});
 
   final Task? task;
+
+  /// Create mode only: the project chosen when the form opens.
+  final int? initialProjectId;
 
   static const String createTitle = 'Yeni görev';
   static const String editTitle = 'Görevi düzenle';
@@ -103,6 +111,8 @@ class _TaskEditScreenState extends ConsumerState<TaskEditScreen> {
       _plannedDate = _dayOf(task.plannedDate);
       _important = task.isImportant;
       _urgent = task.isUrgent;
+    } else {
+      _projectId = widget.initialProjectId;
     }
   }
 
@@ -233,7 +243,7 @@ class _TaskEditScreenState extends ConsumerState<TaskEditScreen> {
     } else {
       choices = projectChoices(
         projects.valueOrNull?.projects ?? const [],
-        keepProjectId: original?.projectId,
+        keepProjectId: original == null ? widget.initialProjectId : original.projectId,
       );
       selected = _selected(choices);
     }

@@ -46,6 +46,10 @@ void main() {
           path: AppRouter.projectsEditPath,
           builder: (_, state) => ProjectEditScreen(project: state.extra! as Project),
         ),
+        GoRoute(
+          path: AppRouter.projectDetailPath,
+          builder: (_, state) => Scaffold(body: Text('DETAIL ${(state.extra! as Project).id}')),
+        ),
       ],
     );
     addTearDown(router.dispose);
@@ -199,25 +203,37 @@ void main() {
       }
     });
 
-    testWidgets('tapping a row opens the edit form for that project', (tester) async {
+    testWidgets('tapping a row opens the detail page for that project (not the edit form)', (
+      tester,
+    ) async {
       await pumpList(tester);
       await tester.tap(find.byKey(const ValueKey('project-title-3')));
+      await tester.pumpAndSettle();
+      expect(find.text('DETAIL 3'), findsOneWidget);
+      expect(find.byType(ProjectEditScreen), findsNothing);
+    });
+
+    testWidgets('menu "Düzenle" opens the edit form for that project', (tester) async {
+      await pumpList(tester);
+      await openMenu(tester, 3);
+      await tester.tap(find.byKey(const ValueKey('project-action-edit')));
       await tester.pumpAndSettle();
       final form = tester.widget<ProjectEditScreen>(find.byType(ProjectEditScreen));
       expect(form.project!.id, 3);
       expect(find.text(ProjectEditScreen.editTitle), findsOneWidget);
+      expect(repo.updateCalls, isEmpty, reason: 'opening the form changes nothing');
     });
   });
 
   group('status menu', () {
-    testWidgets('active project: no "Aktif yap"; hold, someday, complete and delete shown', (
+    testWidgets('active project: no "Aktif yap"; Düzenle, hold, someday, complete, delete shown', (
       tester,
     ) async {
       await pumpList(tester);
       await openMenu(tester, 1);
       expect(find.byKey(const ValueKey('project-action-activate')), findsNothing);
       expect(find.text(ProjectsScreen.activateText), findsNothing);
-      for (final k in ['hold', 'someday', 'complete', 'delete']) {
+      for (final k in ['edit', 'hold', 'someday', 'complete', 'delete']) {
         expect(find.byKey(ValueKey('project-action-$k')), findsOneWidget, reason: k);
         expectTapTarget(tester, find.byKey(ValueKey('project-action-$k')), k);
       }

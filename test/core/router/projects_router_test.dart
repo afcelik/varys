@@ -24,6 +24,7 @@ import 'package:varys/features/planning/data/task_repository_impl.dart';
 import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/features/planning/domain/task_repository.dart';
 import 'package:varys/features/projects/data/project_repository_impl.dart';
+import 'package:varys/features/projects/presentation/project_detail_screen.dart';
 import 'package:varys/features/projects/presentation/project_edit_screen.dart';
 import 'package:varys/features/projects/presentation/projects_screen.dart';
 import 'package:varys/features/routines/data/routine_repository_impl.dart';
@@ -202,8 +203,8 @@ void main() {
     await expectOnlyHome(tester);
   });
 
-  testWidgets('Home card -> /projects -> row -> edit -> add; BackArrow steps back one page '
-      'at a time', (tester) async {
+  testWidgets('Home card -> /projects -> row -> detail -> Düzenle -> add; BackArrow steps back '
+      'one page at a time', (tester) async {
     await pumpApp(tester);
     final more = find.descendant(
       of: find.byType(ProjectsCard),
@@ -216,12 +217,23 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('project-title-1')));
     await tester.pumpAndSettle();
+    expect(find.byType(ProjectDetailScreen), findsOneWidget);
+    expect(tester.widget<ProjectDetailScreen>(find.byType(ProjectDetailScreen)).initial.id, 1);
+
+    await tester.tap(find.byKey(const ValueKey('project-detail-edit')));
+    await tester.pumpAndSettle();
     expect(find.text(ProjectEditScreen.editTitle), findsOneWidget);
+    expect(tester.widget<ProjectEditScreen>(find.byType(ProjectEditScreen)).project!.id, 1);
+
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+    expect(find.byType(ProjectDetailScreen), findsOneWidget);
+    expect(find.byType(ProjectEditScreen), findsNothing);
 
     await tester.tap(find.byIcon(Icons.arrow_back));
     await tester.pumpAndSettle();
     expect(find.byType(ProjectsScreen), findsOneWidget);
-    expect(find.byType(ProjectEditScreen), findsNothing);
+    expect(find.byType(ProjectDetailScreen), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('projects-add')));
     await tester.pumpAndSettle();
@@ -242,10 +254,12 @@ void main() {
       AppRouter.projectsPath,
       AppRouter.projectsNewPath,
       AppRouter.projectsEditPath,
+      AppRouter.projectDetailPath,
     ]) {
       expect(paths, isNot(contains(p)));
     }
     expect(AppRouter.projectsNewPath, '/projects/new');
     expect(AppRouter.projectsEditPath, '/projects/edit');
+    expect(AppRouter.projectDetailPath, '/projects/detail');
   });
 }

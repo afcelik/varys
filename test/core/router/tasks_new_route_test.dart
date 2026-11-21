@@ -20,7 +20,9 @@ import 'package:varys/features/home/presentation/home_screen.dart';
 import 'package:varys/features/planning/data/task_repository_impl.dart';
 import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/features/planning/domain/task_repository.dart';
+import 'package:varys/features/planning/domain/task_form.dart';
 import 'package:varys/features/planning/presentation/task_edit_screen.dart';
+import 'package:varys/features/planning/presentation/task_new_args.dart';
 import 'package:varys/features/planning/presentation/task_list_page.dart';
 import 'package:varys/features/projects/data/project_repository_impl.dart';
 import 'package:varys/features/routines/data/routine_repository_impl.dart';
@@ -191,5 +193,73 @@ void main() {
       AppRouter.varysChatPath,
     ]);
     expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).destinations, hasLength(3));
+  });
+
+  group('extra', () {
+    testWidgets('TaskNewArgs: create form with that project chosen, over a single Home; '
+        'BackArrow returns to it', (tester) async {
+      await pumpApp(tester);
+      router.push(AppRouter.tasksNewPath, extra: const TaskNewArgs(projectId: 1));
+      await tester.pumpAndSettle();
+
+      final form = tester.widget<TaskEditScreen>(find.byType(TaskEditScreen));
+      expect(form.task, isNull);
+      expect(form.initialProjectId, 1);
+      expect(find.text(TaskEditScreen.createTitle), findsOneWidget);
+      expect(
+        tester
+            .widget<DropdownMenu<ProjectChoice>>(find.byType(DropdownMenu<ProjectChoice>))
+            .initialSelection
+            ?.id,
+        1,
+      );
+      expect(find.text(TaskEditUnavailablePage.message), findsNothing);
+      expect(find.byType(NavigationBar), findsNothing, reason: 'outside the shell');
+      expect(homeCount(), 1, reason: 'no redirect, no second /home');
+      final pushed = stackMatches().whereType<ImperativeRouteMatch>().toList();
+      expect(pushed.single.route.path, AppRouter.tasksNewPath);
+
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(homeCount(), 1);
+      expect(router.canPop(), isFalse);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('no extra: form starts with no initial project (as before)', (tester) async {
+      await pumpApp(tester);
+      router.push(AppRouter.tasksNewPath);
+      await tester.pumpAndSettle();
+      expect(tester.widget<TaskEditScreen>(find.byType(TaskEditScreen)).initialProjectId, isNull);
+    });
+
+    for (final (name, extra) in <(String, Object)>[
+      ('String', '1'),
+      ('Map', {'projectId': 1}),
+      ('int', 1),
+    ]) {
+      testWidgets('wrong extra ($name): error page, no form, a single Home; BackArrow returns', (
+        tester,
+      ) async {
+        await pumpApp(tester);
+        router.push(AppRouter.tasksNewPath, extra: extra);
+        await tester.pumpAndSettle();
+
+        expect(find.text(TaskEditUnavailablePage.message), findsOneWidget);
+        expect(find.byType(TaskEditScreen), findsNothing);
+        expect(find.byType(NavigationBar), findsNothing);
+        expect(homeCount(), 1, reason: 'no redirect, no second /home');
+        final pushed = stackMatches().whereType<ImperativeRouteMatch>().toList();
+        expect(pushed.single.route.path, AppRouter.tasksNewPath);
+
+        await tester.tap(find.byIcon(Icons.arrow_back));
+        await tester.pumpAndSettle();
+        expect(find.byType(HomeScreen), findsOneWidget);
+        expect(homeCount(), 1);
+        expect(router.canPop(), isFalse);
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 }

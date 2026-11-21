@@ -69,6 +69,10 @@ void main() {
           path: AppRouter.projectsPath,
           builder: (_, _) => const Scaffold(body: Text('projects-page')),
         ),
+        GoRoute(
+          path: AppRouter.projectDetailPath,
+          builder: (_, state) => Scaffold(body: Text('detail-${(state.extra! as Project).id}')),
+        ),
       ],
     );
     addTearDown(router.dispose);
@@ -256,4 +260,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('projects-page'), findsOneWidget);
   });
+
+  for (final id in [1, 2]) {
+    testWidgets('tapping project row $id pushes the detail page with that project; the row is '
+        'at least 48 high', (tester) async {
+      await pumpCard(tester);
+      expect(tester.getSize(row(id)).height, greaterThanOrEqualTo(48));
+      final ink = find.descendant(of: row(id), matching: find.byType(InkWell)).first;
+      expect(tester.getSize(ink).height, greaterThanOrEqualTo(48));
+
+      await tester.tap(inRow(id, find.text(byId(id).title)));
+      await tester.pumpAndSettle();
+      expect(find.text('detail-$id'), findsOneWidget);
+      expect(find.text('projects-page'), findsNothing);
+    });
+  }
 }

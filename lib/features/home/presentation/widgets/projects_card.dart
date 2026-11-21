@@ -109,6 +109,7 @@ class ProjectsCard extends ConsumerWidget {
 
 /// Title (with the target day, if any) on its own line; below it either the
 /// progress bar with the percent beside it, or "Henüz görev yok" (no bar).
+/// Tapping the row opens the project detail page.
 class _ProjectRow extends StatelessWidget {
   const _ProjectRow({super.key, required this.project});
 
@@ -120,68 +121,72 @@ class _ProjectRow extends StatelessWidget {
     final percent = project.progressPercent;
     final target = project.targetDate;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Text(
-                  project.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyLarge,
-                ),
-              ),
-              if (target != null) ...[
-                const SizedBox(width: 8),
-                Text(
-                  ProjectsCard.formatTargetDate(target),
-                  key: ValueKey('project-target-${project.id}'),
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 6),
-          if (percent == null)
-            Text(
-              ProjectsCard.noTasksText,
-              key: ValueKey('project-no-tasks-${project.id}'),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-              ),
-            )
-          else
+    return InkWell(
+      onTap: () => context.push(AppRouter.projectDetailPath, extra: project),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
             Row(
-              key: ValueKey('project-progress-${project.id}'),
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: percent.clamp(0, 100) / 100,
-                      minHeight: 6,
-                      semanticsLabel: ProjectsCard.percentText(percent),
+                  child: Text(
+                    project.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyLarge,
+                  ),
+                ),
+                if (target != null) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    ProjectsCard.formatTargetDate(target),
+                    key: ValueKey('project-target-${project.id}'),
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  ProjectsCard.percentText(percent),
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
+                ],
               ],
             ),
-        ],
+            const SizedBox(height: 6),
+            if (percent == null)
+              Text(
+                ProjectsCard.noTasksText,
+                key: ValueKey('project-no-tasks-${project.id}'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                ),
+              )
+            else
+              Row(
+                key: ValueKey('project-progress-${project.id}'),
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: percent.clamp(0, 100) / 100,
+                        minHeight: 6,
+                        semanticsLabel: ProjectsCard.percentText(percent),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    ProjectsCard.percentText(percent),
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
       ),
     );
   }
