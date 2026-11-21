@@ -81,7 +81,10 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
   Future<void> _toggle(Task task) async {
     if (_toggling.contains(task.id)) return;
     setState(() => _toggling.add(task.id));
-    final result = await ref.read(taskListNotifierProvider.notifier).toggleTaskCompletion(task.id);
+    // The task may be missing from the filter-narrowed Planning list: pass it.
+    final result = await ref
+        .read(taskListNotifierProvider.notifier)
+        .toggleTaskCompletion(task.id, fallback: task);
     if (!mounted) return;
     setState(() => _toggling.remove(task.id));
     result.fold((failure) {

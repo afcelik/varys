@@ -19,11 +19,13 @@ import 'package:varys/core/router/app_router.dart';
 import 'package:varys/features/home/data/daily_plan_repository.dart';
 import 'package:varys/features/home/domain/daily_plan.dart';
 import 'package:varys/features/home/domain/today_provider.dart';
+import 'package:varys/features/home/presentation/providers/eisenhower_tasks_provider.dart';
 import 'package:varys/features/planning/data/task_repository_impl.dart';
 import 'package:varys/features/planning/domain/task.dart';
 import 'package:varys/features/planning/domain/task_form.dart';
 import 'package:varys/features/planning/presentation/task_edit_screen.dart';
 import 'package:varys/features/planning/presentation/task_new_args.dart';
+import 'package:varys/features/planning/presentation/task_notifier.dart';
 import 'package:varys/features/projects/data/project_repository_impl.dart';
 import 'package:varys/features/projects/domain/project.dart';
 import 'package:varys/features/projects/presentation/project_detail_screen.dart';
@@ -227,6 +229,18 @@ void main() {
 
   ProviderContainer container(WidgetTester tester) =>
       ProviderScope.containerOf(tester.element(find.byType(ProjectDetailScreen)));
+
+  /// pumpAndSettle can return while the unfiltered list re-fetch (a timer)
+  /// is still pending (the previous list stays drawn, no frame is scheduled):
+  /// pump until it has answered.
+  Future<void> settleTaskList(WidgetTester tester) async {
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 20 && container(tester).read(eisenhowerTasksProvider).isLoading; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    await tester.pumpAndSettle();
+    expect(container(tester).read(eisenhowerTasksProvider).isLoading, isFalse);
+  }
 
   group('header', () {
     testWidgets('filled: title, status, description, dates, bar at 25% with "%25" and '
@@ -454,6 +468,60 @@ void main() {
       expect(tasks.server.firstWhere((t) => t.id == 13).status, TaskStatus.todo);
       expect(shownTaskIds(tester), [12, 11, 13], reason: '13 is pending now (oldest)');
       expect(key('project-detail-done-toggle'), findsNothing);
+    });
+
+    testWidgets('Planning filter "Tamamlandı" (task 11 not in that list): the checkbox completes '
+        'it, row moves to "Tamamlananlar", projects reloaded, no snackbar', (tester) async {
+      await openDetail(tester, byId(1));
+      final narrowed = container(
+        tester,
+      ).read(taskListNotifierProvider.notifier).changeFilter(TaskFilter.completed);
+      await tester.pumpAndSettle();
+      expect(await narrowed, const Right<Failure, void>(null));
+      await settleTaskList(tester);
+      expect(
+        container(
+          tester,
+        ).read(taskListNotifierProvider).requireValue.tasks.requireValue.map((t) => t.id),
+        isNot(contains(11)),
+      );
+      expect(shownTaskIds(tester), [12, 11], reason: 'detail still lists every project task');
+      final projectLoads = projects.listCalls;
+
+      await tester.tap(key('project-task-check-11'));
+      await settleTaskList(tester);
+      expect(tasks.updateCalls, [11]);
+      expect(tasks.server.firstWhere((t) => t.id == 11).status, TaskStatus.done);
+      expect(shownTaskIds(tester), [12]);
+      expect(text(tester, 'project-detail-done-title'), 'Tamamlananlar (2)');
+      expect(projects.listCalls, greaterThan(projectLoads), reason: 'progress re-read');
+      expect(find.byType(SnackBar), findsNothing);
+      expect(
+        container(tester).read(taskListNotifierProvider).requireValue.currentFilter,
+        TaskFilter.completed,
+        reason: 'Planning filter unchanged',
+      );
+    });
+
+    testWidgets('Planning filter "Devam Ediyor" (done task 13 not in that list): reopening it '
+        'from "Tamamlananlar" moves it to pending, no snackbar', (tester) async {
+      await openDetail(tester, byId(1));
+      final narrowed = container(
+        tester,
+      ).read(taskListNotifierProvider.notifier).changeFilter(TaskFilter.inProgress);
+      await tester.pumpAndSettle();
+      expect(await narrowed, const Right<Failure, void>(null));
+      await settleTaskList(tester);
+      await tester.tap(key('project-detail-done-toggle'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(key('project-task-check-13'));
+      await settleTaskList(tester);
+      expect(tasks.updateCalls, [13]);
+      expect(tasks.server.firstWhere((t) => t.id == 13).status, TaskStatus.todo);
+      expect(shownTaskIds(tester), [12, 11, 13]);
+      expect(key('project-detail-done-toggle'), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
     });
 
     testWidgets('failed toggle: userMessage snackbar, the task stays pending', (tester) async {

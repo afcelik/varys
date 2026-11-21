@@ -185,9 +185,20 @@ class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
   /// Toggle task completion (optimistic). Rolls back only this task on failure.
   /// On success Home's daily plan is invalidated; for a task linked to a
   /// project the project providers (progress) are invalidated once each.
-  Future<Either<Failure, void>> toggleTaskCompletion(int taskId) async {
+  ///
+  /// A task missing from this (filter-narrowed) list fails unless the caller
+  /// passes it as [fallback] (pages showing the unfiltered list, e.g. project
+  /// detail); then see [_toggleUnlisted].
+  Future<Either<Failure, void>> toggleTaskCompletion(int taskId, {Task? fallback}) async {
     final original = _findTask(taskId);
-    if (original == null) return const Left(_unexpected);
+    if (original == null) {
+      if (fallback == null || fallback.id != taskId) return const Left(_unexpected);
+      return _unlistedInFlight[taskId] ??= _toggleUnlisted(fallback).whenComplete(() {
+        // Block body: an arrow would return the removed future itself and
+        // whenComplete would wait on it forever.
+        _unlistedInFlight.remove(taskId);
+      });
+    }
 
     final newStatus = original.isCompleted ? TaskStatus.todo : TaskStatus.done;
     _replaceTask(original.copyWith(status: newStatus, updatedAt: DateTime.now()));
@@ -211,6 +222,46 @@ class TaskListNotifier extends AutoDisposeAsyncNotifier<TaskListState> {
       if (kDebugMode) debugPrint('TaskListNotifier.toggleTaskCompletion error: $e\n$stackTrace');
       _replaceTask(original);
       return const Left(_unexpected);
+    }
+  }
+
+  /// Status changes in flight for tasks not in the list, by id: a second
+  /// call while one runs gets the same future (one request).
+  final Map<int, Future<Either<Failure, void>>> _unlistedInFlight = {};
+
+  /// Toggles [task] (not in the current list) from its own status. Not
+  /// optimistic: waits for the server. On success the server task is applied
+  /// in place only if it has since appeared in the list (removed if it no
+  /// longer matches the filter), never added; then a silent refresh (which
+  /// also recomputes the unfiltered Eisenhower list), Home sync and, for a
+  /// task linked to a project, project sync once. On failure the list is
+  /// untouched and the failure is returned. Kept alive while it runs.
+  Future<Either<Failure, void>> _toggleUnlisted(Task task) async {
+    final link = ref.keepAlive();
+    var linkHandedOff = false;
+    try {
+      final generation = _generation;
+      final newStatus = task.isCompleted ? TaskStatus.todo : TaskStatus.done;
+      final repository = await ref.read(taskRepositoryProvider.future);
+      final result = await repository.updateTaskStatus(task.id, newStatus);
+      return result.fold(
+        (failure) => Left(failure),
+        (serverTask) {
+          if (generation == _generation) {
+            _putUpdated(serverTask);
+            linkHandedOff = true;
+            unawaited(_silentRefresh(generation).whenComplete(link.close));
+          }
+          _syncHome();
+          if (serverTask.projectId != null) _syncProjects();
+          return const Right(null);
+        },
+      );
+    } catch (e, stackTrace) {
+      if (kDebugMode) debugPrint('TaskListNotifier._toggleUnlisted error: $e\n$stackTrace');
+      return const Left(_unexpected);
+    } finally {
+      if (!linkHandedOff) link.close();
     }
   }
 
