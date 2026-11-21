@@ -1,0 +1,14 @@
+{
+  "id": 3,
+  "title": "Fatura ödeme",
+  "description": null,
+  "start_time": "09:00",
+  "end_time": "09:30",
+  "recurrence_type": "once",
+  "days_of_week": null,
+  "day_of_month": null,
+  "interval_days": null,
+  "start_date": "2026-11-02",
+  "created_at": "2026-11-21T05:43:31",
+  "updated_at": "2026-11-21T05:43:31"
+}

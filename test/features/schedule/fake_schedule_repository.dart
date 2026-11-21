@@ -94,6 +94,8 @@ class FakeScheduleRepository implements ScheduleRepository {
         return d.day == target;
       case RecurrenceType.interval:
         return d.difference(start).inDays % b.intervalDays! == 0;
+      case RecurrenceType.once:
+        return d == start;
     }
   }
 

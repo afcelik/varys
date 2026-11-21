@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:varys/core/text/turkish_text.dart';
 import 'package:varys/features/home/domain/plan_field.dart';
 import 'package:varys/features/routines/domain/recurrence_form.dart';
 import 'package:varys/features/routines/domain/routine.dart';
@@ -11,7 +12,10 @@ import 'package:varys/features/schedule/domain/schedule_block.dart';
 
 const String timeRangeInvalidMessage = 'Bitiş saati başlangıçtan sonra olmalı';
 const String timeOutOfRangeMessage = 'Saat 00:00 ile 23:59 arasında olmalı';
-const String quickAddFormatMessage = 'Biçim: 08:30-09:00 başlık';
+const String quickAddFormatMessage = 'Biçim: [bugün] 08:30-09:00 başlık';
+
+/// Optional quick-add prefix (compared Turkish-lowercased) for a one-time block.
+const String quickAddTodayPrefix = 'bugün';
 const String scheduleRecurrenceChangeNote =
     'Tekrar kuralını değiştirmek geçmiş günlerin programını da değiştirir.';
 
@@ -195,11 +199,20 @@ sealed class QuickAddResult {
 }
 
 final class QuickAddOk extends QuickAddResult {
-  const QuickAddOk({required this.start, required this.end, required this.title});
+  const QuickAddOk({
+    required this.start,
+    required this.end,
+    required this.title,
+    this.oneTime = false,
+  });
 
   final ScheduleTime start;
   final ScheduleTime end;
   final String title;
+
+  /// True when the line started with 'bugün': a one-time block on that day
+  /// instead of a daily one.
+  final bool oneTime;
 }
 
 final class QuickAddError extends QuickAddResult {
@@ -216,11 +229,24 @@ final RegExp _quickAdd = RegExp(
   r']\s*([0-9]{1,2})[:.]([0-9]{2})(?:\s+([\s\S]*))?$',
 );
 
+// The first word and the rest of the line.
+final RegExp _firstWord = RegExp(r'^\s*(\S+)([\s\S]*)$');
+
 /// Parses "08:30-09:00 kahvaltı" (also "8:30-9:00", "08.30-09.00",
-/// "08:30–09:00" with an en dash, "08:30 - 09:00"). Errors are Turkish
-/// messages; nothing is sent for them.
+/// "08:30–09:00" with an en dash, "08:30 - 09:00"). An optional leading
+/// 'bugün' (any case, Turkish-aware) makes it a one-time block
+/// ([QuickAddOk.oneTime]); no other prefix word is recognised. Errors are
+/// Turkish messages; nothing is sent for them.
 QuickAddResult parseQuickAdd(String input) {
-  final m = _quickAdd.firstMatch(input);
+  var line = input;
+  var oneTime = false;
+  final w = _firstWord.firstMatch(input);
+  if (w != null && turkishLower(w.group(1)!) == quickAddTodayPrefix) {
+    // 'bugün' alone leaves an empty rest, which the format check rejects.
+    line = w.group(2)!;
+    oneTime = true;
+  }
+  final m = _quickAdd.firstMatch(line);
   if (m == null) return const QuickAddError(quickAddFormatMessage);
 
   ScheduleTime? time(String h, String mm) {
@@ -239,7 +265,7 @@ QuickAddResult parseQuickAdd(String input) {
   final title = (m.group(5) ?? '').trim();
   final titleError = validateTitle(title);
   if (titleError != null) return QuickAddError(titleError);
-  return QuickAddOk(start: start, end: end, title: title);
+  return QuickAddOk(start: start, end: end, title: title, oneTime: oneTime);
 }
 
 /// Default times for a new block: the next full hour for one hour, at most

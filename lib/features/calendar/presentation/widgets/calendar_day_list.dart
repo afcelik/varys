@@ -13,6 +13,7 @@ import 'package:varys/features/routines/domain/routine.dart';
 import 'package:varys/features/routines/presentation/routines_day_notifier.dart';
 import 'package:varys/features/schedule/domain/schedule_form.dart';
 import 'package:varys/features/schedule/presentation/schedule_day_notifier.dart';
+import 'package:varys/features/schedule/presentation/schedule_new_args.dart';
 
 /// Details of the selected day, in fixed order: Program (by start time),
 /// Rutinler, Görevler (planned that day), Bitiş tarihi bu gün (due that day).
@@ -31,6 +32,7 @@ class CalendarDayList extends ConsumerWidget {
   static const String dueTitle = 'Bitiş tarihi bu gün';
   static const String emptyText = 'Bu gün için kayıt yok';
   static const String retryText = 'Tekrar dene';
+  static const String addBlockTooltip = 'Bu güne blok ekle';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -81,6 +83,7 @@ class CalendarDayList extends ConsumerWidget {
                 daysOfWeek: r.daysOfWeek,
                 dayOfMonth: r.dayOfMonth,
                 intervalDays: r.intervalDays,
+                startDate: r.startDate,
               ),
               title: r.title,
               onTap: () => context.push(AppRouter.routinesEditPath, extra: _routineOf(r)),
@@ -131,12 +134,31 @@ class CalendarDayList extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          formatDateForDisplay(day),
-          key: const ValueKey('calendar-day-title'),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                formatDateForDisplay(day),
+                key: const ValueKey('calendar-day-title'),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
+            // A one-time block on the selected day; the form pops back here
+            // and the day list and month counts refresh through the existing
+            // schedule invalidation (calendarMonthSyncProvider).
+            IconButton(
+              key: const ValueKey('calendar-day-add-block'),
+              tooltip: addBlockTooltip,
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              icon: const Icon(Icons.add),
+              onPressed: () => context.push(
+                AppRouter.scheduleNewPath,
+                extra: ScheduleNewArgs(day: day, once: true),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 8),
         if (allEmpty)

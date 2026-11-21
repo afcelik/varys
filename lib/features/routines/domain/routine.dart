@@ -13,6 +13,10 @@ enum RecurrenceType {
   monthly,
   @JsonValue('interval')
   interval,
+
+  /// One-time: happens only on start_date (no other recurrence fields).
+  @JsonValue('once')
+  once,
 }
 
 /// A routine as returned by `GET /routines` (backend RoutineRead).

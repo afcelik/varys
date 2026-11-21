@@ -12,12 +12,34 @@ extension RecurrenceTypeApi on RecurrenceType {
         RecurrenceType.weekly => 'weekly',
         RecurrenceType.monthly => 'monthly',
         RecurrenceType.interval => 'interval',
+        RecurrenceType.once => 'once',
       };
 }
 
 /// Monday=0 ... Sunday=6 (same as the backend).
 const List<String> weekdayShortNames = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 
+/// Turkish month names, January first (same as intl's tr `MMMM`; a fixed
+/// table so summaries need no locale data initialisation).
+const List<String> trMonthNames = [
+  'Ocak',
+  'Şubat',
+  'Mart',
+  'Nisan',
+  'Mayıs',
+  'Haziran',
+  'Temmuz',
+  'Ağustos',
+  'Eylül',
+  'Ekim',
+  'Kasım',
+  'Aralık',
+];
+
+/// "25 Kasım" (day and Turkish month name, no year).
+String dayMonthLabel(DateTime day) => '${day.day} ${trMonthNames[day.month - 1]}';
+
+const String oneTimeLabel = 'Tek sefer';
 const String monthEndNote = 'Ay kısaysa ayın son günü';
 const String recurrenceChangeNote = 'Tekrar kuralını değiştirmek geçmiş serilerini yeniden hesaplar.';
 
@@ -126,6 +148,8 @@ String? validateRecurrence(RecurrenceFormState r) {
     case RecurrenceType.interval:
       final i = r.intervalDays;
       return i == null || i < 1 ? intervalInvalidMessage : null;
+    case RecurrenceType.once:
+      return null;
   }
 }
 
@@ -272,15 +296,18 @@ String recurrenceSummary(Routine routine) => recurrenceSummaryOf(
       daysOfWeek: routine.daysOfWeek,
       dayOfMonth: routine.dayOfMonth,
       intervalDays: routine.intervalDays,
+      startDate: routine.startDate,
     );
 
 /// Short Turkish summary of stored recurrence fields ("Her gün", "Pzt, Çar",
-/// "Ayın 15'i", "Her 3 günde bir").
+/// "Ayın 15'i", "Her 3 günde bir", "Tek sefer, 25 Kasım"). [startDate] is
+/// used only by the one-time type ("Tek sefer" without it).
 String recurrenceSummaryOf(
   RecurrenceType type, {
   List<int>? daysOfWeek,
   int? dayOfMonth,
   int? intervalDays,
+  DateTime? startDate,
 }) {
   switch (type) {
     case RecurrenceType.daily:
@@ -298,5 +325,8 @@ String recurrenceSummaryOf(
     case RecurrenceType.interval:
       final i = intervalDays;
       return i == null ? 'Aralıklı' : 'Her $i günde bir';
+    case RecurrenceType.once:
+      final d = startDate;
+      return d == null ? oneTimeLabel : '$oneTimeLabel, ${dayMonthLabel(d)}';
   }
 }

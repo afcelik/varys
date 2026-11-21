@@ -171,7 +171,13 @@ void main() {
         final result = await repository.getRoutines();
         verify(() => api.get<List<dynamic>>('/routines')).called(1);
         final list = result.fold((f) => fail('expected Right, got $f'), (r) => r);
-        expect(list.map((r) => r.recurrenceType), RecurrenceType.values);
+        // routines_list.json predates 'once' (covered by routines_list_with_once.json).
+        expect(list.map((r) => r.recurrenceType), [
+          RecurrenceType.daily,
+          RecurrenceType.weekly,
+          RecurrenceType.monthly,
+          RecurrenceType.interval,
+        ]);
       });
 
       test('500 -> ServerFailure with fixed text', () async {

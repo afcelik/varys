@@ -44,12 +44,16 @@ final timePickerProvider = Provider<ScheduleTimePicker>((ref) => showScheduleTim
 
 /// Full-screen create/edit form (outside the shell). [block] null = create
 /// (route `/schedule/new`); otherwise edit (route `/schedule/edit`, the block
-/// comes as `extra`). The recurrence widgets are copied from the routine form
+/// comes as `extra`). On create, [initialDay] (default today, clamped to the
+/// allowed range) is the start date and [initialOnce] preselects the
+/// one-time type; both are ignored when editing. The recurrence widgets are copied from the routine form
 /// (`RoutineEditScreen`), which stays unchanged.
 class ScheduleEditScreen extends ConsumerStatefulWidget {
-  const ScheduleEditScreen({super.key, this.block});
+  const ScheduleEditScreen({super.key, this.block, this.initialDay, this.initialOnce = false});
 
   final ScheduleBlock? block;
+  final DateTime? initialDay;
+  final bool initialOnce;
 
   static const String createTitle = 'Yeni blok';
   static const String editTitle = 'Bloğu düzenle';
@@ -62,6 +66,10 @@ class ScheduleEditScreen extends ConsumerStatefulWidget {
   static const String dayOfMonthLabel = 'Ayın günü';
   static const String intervalLabel = 'Kaç günde bir';
   static const String startDateLabel = 'Başlangıç tarihi';
+
+  /// Label of the start date field while the one-time type is selected: the
+  /// block happens on that day only.
+  static const String onceDayLabel = 'Gün';
   static const String startDateReadOnlyHelper = 'Başlangıç tarihi değiştirilemez';
   static const String saveText = 'Kaydet';
 
@@ -70,7 +78,13 @@ class ScheduleEditScreen extends ConsumerStatefulWidget {
     RecurrenceType.weekly: 'Haftalık',
     RecurrenceType.monthly: 'Aylık',
     RecurrenceType.interval: 'Aralık',
+    RecurrenceType.once: oneTimeLabel,
   };
+
+  /// Edit only, shown while 'Tek sefer' is selected for a block that was not
+  /// one-time: it will happen on its (unchangeable) start day.
+  static String onceNote(DateTime startDate) =>
+      'Tek sefer, bloğun başlangıç gününde olur (${dayMonthLabel(startDate)}).';
 
   /// Bounds of the start date (same as the backend).
   static final DateTime minStartDate = DateTime(2000, 1, 1);
@@ -119,7 +133,9 @@ class ScheduleEditScreenState extends ConsumerState<ScheduleEditScreen> {
     _dayOfMonth = TextEditingController(text: b?.dayOfMonth?.toString() ?? '');
     _interval = TextEditingController(text: b?.intervalDays?.toString() ?? '');
     _recurrence = b == null
-        ? const RecurrenceFormState(type: RecurrenceType.daily)
+        ? RecurrenceFormState(
+            type: widget.initialOnce ? RecurrenceType.once : RecurrenceType.daily,
+          )
         : RecurrenceFormState.fromFields(
             type: b.recurrenceType,
             daysOfWeek: b.daysOfWeek,
@@ -134,7 +150,9 @@ class ScheduleEditScreenState extends ConsumerState<ScheduleEditScreen> {
       _start = b.startTime;
       _end = b.endTime;
     }
-    _startDate = b?.startDate ?? ScheduleEditScreen.clampStartDate(ref.read(todayProvider));
+    _startDate =
+        b?.startDate ??
+        ScheduleEditScreen.clampStartDate(widget.initialDay ?? ref.read(todayProvider));
   }
 
   @override
@@ -255,6 +273,8 @@ class ScheduleEditScreenState extends ConsumerState<ScheduleEditScreen> {
     final recurrenceError = validateRecurrence(_recurrence);
     final rangeError = validateTimeRange(_start, _end);
     final showRecurrenceNote = _isEdit && scheduleRecurrenceDiffers(_original!, _recurrence);
+    final isOnce = _recurrence.type == RecurrenceType.once;
+    final showOnceNote = _isEdit && isOnce && _original!.recurrenceType != RecurrenceType.once;
 
     return Scaffold(
       appBar: AppBar(
@@ -315,25 +335,30 @@ class ScheduleEditScreenState extends ConsumerState<ScheduleEditScreen> {
               const SizedBox(height: 24),
               Text(ScheduleEditScreen.typeLabel, style: theme.textTheme.titleSmall),
               const SizedBox(height: 8),
-              SegmentedButton<RecurrenceType>(
+              // Chips wrap onto a new line instead of squeezing five labels
+              // into one row (360px at 1.5x text would truncate them).
+              Wrap(
                 key: const ValueKey('schedule-type'),
-                showSelectedIcon: false,
-                segments: [
-                  for (final type in RecurrenceType.values)
-                    ButtonSegment(
-                      value: type,
-                      label: Text(
-                        ScheduleEditScreen.typeLabels[type]!,
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  for (final MapEntry(key: type, value: label)
+                      in ScheduleEditScreen.typeLabels.entries)
+                    ChoiceChip(
+                      key: ValueKey('schedule-type-${type.name}'),
+                      label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      selected: _recurrence.type == type,
+                      showCheckmark: false,
+                      materialTapTargetSize: MaterialTapTargetSize.padded,
+                      onSelected: _saving
+                          ? null
+                          : (selected) {
+                              // Tapping the selected chip keeps it selected.
+                              if (!selected) return;
+                              setState(() => _recurrence = _recurrence.copyWith(type: type));
+                            },
                     ),
                 ],
-                selected: {_recurrence.type},
-                onSelectionChanged: _saving
-                    ? null
-                    : (s) => setState(() => _recurrence = _recurrence.copyWith(type: s.first)),
               ),
               const SizedBox(height: 16),
               ..._recurrenceFields(theme, recurrenceError),
@@ -345,8 +370,17 @@ class ScheduleEditScreenState extends ConsumerState<ScheduleEditScreen> {
                   style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.tertiary),
                 ),
               ],
+              if (showOnceNote) ...[
+                const SizedBox(height: 8),
+                Text(
+                  ScheduleEditScreen.onceNote(_original!.startDate),
+                  key: const ValueKey('schedule-once-note'),
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.tertiary),
+                ),
+              ],
               const SizedBox(height: 24),
               _StartDateField(
+                label: isOnce ? ScheduleEditScreen.onceDayLabel : ScheduleEditScreen.startDateLabel,
                 date: _startDate,
                 readOnly: _isEdit,
                 onTap: _saving ? null : _pickStartDate,
@@ -377,6 +411,7 @@ class ScheduleEditScreenState extends ConsumerState<ScheduleEditScreen> {
   List<Widget> _recurrenceFields(ThemeData theme, String? error) {
     switch (_recurrence.type) {
       case RecurrenceType.daily:
+      case RecurrenceType.once:
         return const [];
       case RecurrenceType.weekly:
         return [
@@ -501,8 +536,14 @@ class _TimeField extends StatelessWidget {
 
 // Copied from RoutineEditScreen's _StartDateField (keys renamed).
 class _StartDateField extends StatelessWidget {
-  const _StartDateField({required this.date, required this.readOnly, required this.onTap});
+  const _StartDateField({
+    required this.label,
+    required this.date,
+    required this.readOnly,
+    required this.onTap,
+  });
 
+  final String label;
   final DateTime date;
   final bool readOnly;
   final VoidCallback? onTap;
@@ -513,7 +554,7 @@ class _StartDateField extends StatelessWidget {
       key: const ValueKey('schedule-start-date'),
       isEmpty: false,
       decoration: InputDecoration(
-        labelText: ScheduleEditScreen.startDateLabel,
+        labelText: label,
         helperText: readOnly ? ScheduleEditScreen.startDateReadOnlyHelper : null,
         helperMaxLines: 2,
         suffixIcon: readOnly ? const Icon(Icons.lock_outline) : const Icon(Icons.calendar_today),
@@ -537,7 +578,8 @@ class _StartDateField extends StatelessWidget {
 }
 
 /// Shown when `/schedule/edit` is opened without a [ScheduleBlock] as
-/// `extra` (deep link, notification, wrong type). No silent fallback to
+/// `extra` (deep link, notification, wrong type), and when `/schedule/new`
+/// gets an `extra` that is not a [ScheduleNewArgs]. No silent fallback to
 /// create.
 class ScheduleEditUnavailablePage extends StatelessWidget {
   const ScheduleEditUnavailablePage({super.key});

@@ -74,6 +74,8 @@ class _InMemoryRoutineRepository implements RoutineRepository {
         return day.day == target;
       case RecurrenceType.interval:
         return day.difference(r.startDate).inDays % r.intervalDays! == 0;
+      case RecurrenceType.once:
+        return day == r.startDate;
     }
   }
 

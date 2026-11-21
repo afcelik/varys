@@ -1,0 +1,20 @@
+{
+  "detail": [
+    {
+      "type": "value_error",
+      "loc": [
+        "body"
+      ],
+      "msg": "Value error, interval_days must be null for recurrence_type 'once'",
+      "input": {
+        "title": "x",
+        "recurrence_type": "once",
+        "interval_days": 3,
+        "start_date": "2026-11-25"
+      },
+      "ctx": {
+        "error": {}
+      }
+    }
+  ]
+}

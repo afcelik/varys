@@ -26,6 +26,7 @@ import 'package:varys/features/routines/presentation/routine_edit_screen.dart';
 import 'package:varys/features/routines/presentation/routines_screen.dart';
 import 'package:varys/features/schedule/domain/schedule_block.dart';
 import 'package:varys/features/schedule/presentation/schedule_edit_screen.dart';
+import 'package:varys/features/schedule/presentation/schedule_new_args.dart';
 import 'package:varys/features/schedule/presentation/schedule_screen.dart';
 import 'package:varys/features/settings/presentation/settings_screen.dart';
 import 'package:varys/features/varys_chat/presentation/varys_chat_screen.dart';
@@ -281,13 +282,27 @@ class AppRouter {
             child: ScheduleScreen(),
           ),
         ),
-        // Schedule block create form: needs no extra.
+        // Schedule block create form. No extra: today, daily. A
+        // ScheduleNewArgs extra (calendar 'Bu güne blok ekle'): that day,
+        // optionally one-time. Any other extra shows an error page, checked
+        // here, never by a redirect (a redirect on push adds a second /home).
         GoRoute(
           path: scheduleNewPath,
           name: 'schedule-new',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: ScheduleEditScreen(),
-          ),
+          pageBuilder: (context, state) {
+            final extra = state.extra;
+            return NoTransitionPage(
+              child: switch (extra) {
+                null => const ScheduleEditScreen(),
+                ScheduleNewArgs(:final day, :final once) => ScheduleEditScreen(
+                  key: ValueKey('schedule-new-${day.year}-${day.month}-${day.day}-$once'),
+                  initialDay: day,
+                  initialOnce: once,
+                ),
+                _ => const ScheduleEditUnavailablePage(),
+              },
+            );
+          },
         ),
         // Schedule block edit form: the ScheduleBlock must come as extra.
         // Anything else (null, wrong type) shows an error page; no silent

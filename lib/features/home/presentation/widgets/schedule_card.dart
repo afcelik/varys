@@ -28,7 +28,7 @@ class ScheduleCard extends ConsumerWidget {
   static const String calendarTooltip = 'Takvim';
   static const String retryText = 'Tekrar dene';
   static const String nowLabel = 'Şimdi';
-  static const String quickAddHint = 'Örn: 08:30-09:00 kahvaltı';
+  static const String quickAddHint = 'Örn: bugün 14:00-15:00 doktor';
   static const int maxRows = 8;
 
   static String seeAllText(int hidden) => 'Tümünü gör (+$hidden)';

@@ -54,7 +54,13 @@ void main() {
 
     test('every recurrence type maps to its enum with only its own field', () {
       final byType = {for (final b in list) b.recurrenceType: b};
-      expect(byType.keys.toSet(), RecurrenceType.values.toSet());
+      // schedule_list.json predates 'once' (covered by schedule_list_with_once.json).
+      expect(byType.keys.toSet(), {
+        RecurrenceType.daily,
+        RecurrenceType.weekly,
+        RecurrenceType.monthly,
+        RecurrenceType.interval,
+      });
 
       final weekly = byType[RecurrenceType.weekly]!;
       expect(weekly.daysOfWeek, [0, 2, 4]);

@@ -39,7 +39,9 @@ class ScheduleDayNotifier extends AutoDisposeFamilyAsyncNotifier<List<ScheduleBl
   /// Whether a quick-add request is in flight.
   bool get isQuickAdding => _quickAddInFlight;
 
-  /// Creates a daily block starting on this day from a parsed quick-add line.
+  /// Creates a block starting on this day from a parsed quick-add line:
+  /// one-time on this day when the line had the 'bugün' prefix
+  /// ([QuickAddOk.oneTime]), otherwise daily.
   ///
   /// Not optimistic: the server result is inserted at once (in order), then
   /// the day is re-fetched silently. The /schedule list is invalidated only if
@@ -58,7 +60,7 @@ class ScheduleDayNotifier extends AutoDisposeFamilyAsyncNotifier<List<ScheduleBl
         title: parsed.title,
         startTime: parsed.start,
         endTime: parsed.end,
-        recurrenceType: RecurrenceType.daily,
+        recurrenceType: parsed.oneTime ? RecurrenceType.once : RecurrenceType.daily,
         startDate: day,
       );
       return result.fold((failure) => Left(failure), (created) {

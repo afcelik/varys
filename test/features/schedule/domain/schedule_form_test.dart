@@ -319,7 +319,7 @@ void main() {
       ]) {
         expect(error(input), quickAddFormatMessage, reason: input);
       }
-      expect(quickAddFormatMessage, 'Biçim: 08:30-09:00 başlık');
+      expect(quickAddFormatMessage, 'Biçim: [bugün] 08:30-09:00 başlık');
     });
   });
 

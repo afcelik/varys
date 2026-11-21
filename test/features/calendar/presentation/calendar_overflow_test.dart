@@ -4,7 +4,10 @@
 // recurrence summary), empty month and empty day, loading (month and every
 // section), month error, section errors, and months of 4, 5 and 6 rows. Each
 // test checks takeException, drawn line counts of maxLines texts (a growing
-// row throws nothing), 48x48 tap targets and the wide/narrow layout.
+// row throws nothing), 48x48 tap targets and the wide/narrow layout. The day
+// header's 'Bu güne blok ekle' button is checked in every state (48x48,
+// beside the title, inside the window); one more state draws one-time records
+// ('Tek sefer, 21 Kasım' subtitles).
 // pumpAndSettle is never used.
 
 import 'dart:async';
@@ -246,8 +249,19 @@ void main() {
     expect(grid.right, lessThanOrEqualTo(width), reason: label);
   }
 
-  void expectDayTitle(WidgetTester tester, String label) =>
-      expectLines(tester, key('calendar-day-title'), 2, '$label day title');
+  /// The day title (max 2 lines) and the 'Bu güne blok ekle' button beside
+  /// it: 48x48, tooltip, no overlap, inside the window.
+  void expectDayTitle(WidgetTester tester, String label) {
+    expectLines(tester, key('calendar-day-title'), 2, '$label day title');
+    final button = key('calendar-day-add-block');
+    expectTarget(tester, button, '$label add block');
+    expect(find.byTooltip(CalendarDayList.addBlockTooltip), findsOneWidget, reason: label);
+    final b = tester.getRect(button);
+    final t = tester.getRect(key('calendar-day-title'));
+    expect(b.overlaps(t), isFalse, reason: '$label button apart from the title');
+    expect(b.left, greaterThanOrEqualTo(t.right), reason: '$label button right of the title');
+    expect(b.right, lessThanOrEqualTo(tester.view.physicalSize.width + 0.5), reason: label);
+  }
 
   for (final width in _widths) {
     for (final scale in _textScales) {
@@ -358,6 +372,7 @@ void main() {
           expectTarget(tester, key('calendar-month-retry'), '$label month retry');
           expectGrid(tester, label, 2026, 11, rows: 6);
           expectLayout(tester, width, label);
+          expectDayTitle(tester, label);
           expect(key('calendar-row-schedule-100'), findsOneWidget, reason: 'the list still works');
         });
 
@@ -376,6 +391,38 @@ void main() {
           expect(key('calendar-month-error'), findsNothing);
           expectGrid(tester, label, 2026, 11, rows: 6);
           expectLayout(tester, width, label);
+          expectDayTitle(tester, label);
+        });
+
+        testWidgets('one-time records: Tek sefer subtitles on one line', (tester) async {
+          final once = _blocks().first.copyWith(
+            id: 150,
+            recurrenceType: RecurrenceType.once,
+            startDate: _today,
+          );
+          scheduleRepo.server = [once, ..._blocks().skip(1)];
+          final onceRoutine = _routines().first.copyWith(
+            id: 250,
+            recurrenceType: RecurrenceType.once,
+            daysOfWeek: null,
+            startDate: _today,
+          );
+          when(
+            () => routineRepo.getRoutinesForDay(any()),
+          ).thenAnswer((_) async => Right([onceRoutine, ..._routines().skip(1)]));
+          await pumpAt(tester, width, scale);
+          expect(tester.takeException(), isNull, reason: label);
+          expectDayTitle(tester, label);
+          expectLayout(tester, width, label);
+          final sub = key('calendar-row-subtitle-routine-250');
+          expect(tester.widget<Text>(sub).data, 'Tek sefer, 21 Kasım');
+          expectLines(tester, sub, 1, '$label once summary', exactly: 1);
+          expectLines(tester, key('calendar-row-title-routine-250'), 2, label, exactly: 2);
+          expectTarget(tester, key('calendar-row-routine-250'), '$label once routine row');
+          expectLines(tester, key('calendar-row-subtitle-schedule-150'), 1, label, exactly: 1);
+          expectLines(tester, key('calendar-row-title-schedule-150'), 2, label, exactly: 2);
+          expectTarget(tester, key('calendar-row-schedule-150'), '$label once block row');
+          expect(tester.takeException(), isNull, reason: label);
         });
 
         for (final (year, month, rows) in [(2027, 2, 4), (2026, 12, 5), (2026, 3, 6)]) {

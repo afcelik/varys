@@ -60,6 +60,8 @@ bool recurrenceIsDue({
       return d.day == target;
     case RecurrenceType.interval:
       return d.difference(start).inDays % intervalDays! == 0;
+    case RecurrenceType.once:
+      return d == start;
   }
 }
 

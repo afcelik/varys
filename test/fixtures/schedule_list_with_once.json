@@ -1,0 +1,44 @@
+[
+  {
+    "id": 1,
+    "title": "Sabah koşusu",
+    "description": null,
+    "start_time": "06:30",
+    "end_time": "07:15",
+    "recurrence_type": "daily",
+    "days_of_week": null,
+    "day_of_month": null,
+    "interval_days": null,
+    "start_date": "2026-11-02",
+    "created_at": "2026-11-21T05:43:31",
+    "updated_at": "2026-11-21T05:43:31"
+  },
+  {
+    "id": 3,
+    "title": "Fatura ödeme",
+    "description": null,
+    "start_time": "09:00",
+    "end_time": "09:30",
+    "recurrence_type": "monthly",
+    "days_of_week": null,
+    "day_of_month": 15,
+    "interval_days": null,
+    "start_date": "2026-11-02",
+    "created_at": "2026-11-21T05:43:31",
+    "updated_at": "2026-11-21T05:43:31"
+  },
+  {
+    "id": 2,
+    "title": "Doktor randevusu",
+    "description": "Kardiyoloji, 3. kat",
+    "start_time": "14:00",
+    "end_time": "15:00",
+    "recurrence_type": "once",
+    "days_of_week": null,
+    "day_of_month": null,
+    "interval_days": null,
+    "start_date": "2026-11-25",
+    "created_at": "2026-11-21T05:43:31",
+    "updated_at": "2026-11-21T05:43:31"
+  }
+]

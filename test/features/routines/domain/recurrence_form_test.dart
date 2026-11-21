@@ -201,7 +201,7 @@ void main() {
 
     test('every type maps to its backend value', () {
       expect(RecurrenceType.values.map((t) => t.apiValue),
-          ['daily', 'weekly', 'monthly', 'interval']);
+          ['daily', 'weekly', 'monthly', 'interval', 'once']);
     });
   });
 

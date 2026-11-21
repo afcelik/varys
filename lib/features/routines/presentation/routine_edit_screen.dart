@@ -39,7 +39,19 @@ class RoutineEditScreen extends ConsumerStatefulWidget {
     RecurrenceType.weekly: 'Haftalık',
     RecurrenceType.monthly: 'Aylık',
     RecurrenceType.interval: 'Aralık',
+    RecurrenceType.once: oneTimeLabel,
   };
+
+  /// Types offered by the form. 'Tek sefer' makes no sense for a routine and
+  /// is offered only when the routine being edited is already one-time, so
+  /// its type shows correctly (and it can stay one-time or move away).
+  static List<RecurrenceType> typeOptions(Routine? original) => [
+    RecurrenceType.daily,
+    RecurrenceType.weekly,
+    RecurrenceType.monthly,
+    RecurrenceType.interval,
+    if (original?.recurrenceType == RecurrenceType.once) RecurrenceType.once,
+  ];
 
   /// Bounds of the start date (same as the backend).
   static final DateTime minStartDate = DateTime(2000, 1, 1);
@@ -233,7 +245,7 @@ class RoutineEditScreenState extends ConsumerState<RoutineEditScreen> {
                 key: const ValueKey('routine-type'),
                 showSelectedIcon: false,
                 segments: [
-                  for (final type in RecurrenceType.values)
+                  for (final type in RoutineEditScreen.typeOptions(_original))
                     ButtonSegment(
                       value: type,
                       label: Text(
@@ -290,6 +302,7 @@ class RoutineEditScreenState extends ConsumerState<RoutineEditScreen> {
   List<Widget> _recurrenceFields(ThemeData theme, String? error) {
     switch (_recurrence.type) {
       case RecurrenceType.daily:
+      case RecurrenceType.once:
         return const [];
       case RecurrenceType.weekly:
         return [

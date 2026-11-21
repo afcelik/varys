@@ -164,6 +164,7 @@ class _BlockRow extends StatelessWidget {
                         daysOfWeek: block.daysOfWeek,
                         dayOfMonth: block.dayOfMonth,
                         intervalDays: block.intervalDays,
+                        startDate: block.startDate,
                       ),
                       key: ValueKey('schedule-list-summary-${block.id}'),
                       maxLines: 1,

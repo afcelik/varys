@@ -14,8 +14,10 @@
 // error. The /projects skeleton page is drawn at 360px with text scale 1.0
 // and 1.5. The "Günlük Program" card is drawn filled (11 blocks: 8 rows and
 // "Tümünü gör (+3)", an unbroken 255-character title, 00:00-23:59, "Şimdi"
-// labels at a fixed 09:10), empty, loading, error and with the quick-add
-// error message open; its groups use fixed pump steps (no pumpAndSettle).
+// labels at a fixed 09:10), empty, loading, error, with the quick-add
+// error message open and right after a 'bugün' quick add (one-time block);
+// in every state the quick-add hint ('Örn: bugün 14:00-15:00 doktor') draws
+// one line inside the card. Its groups use fixed pump steps (no pumpAndSettle).
 // The date header and the schedule card's calendar button (the entry points
 // to /calendar) are drawn at every width and text scale: one >= 48 high
 // button labelled 'Takvimi aç' that holds the whole date, no overlap with the
@@ -836,6 +838,11 @@ void main() {
       expectTapTarget(tester, find.byKey(const ValueKey('schedule-card-add')), '$label add');
       expectTapTarget(tester, find.byKey(const ValueKey('schedule-card-more')), '$label more');
       expect(tester.getSize(quickAdd).height, greaterThanOrEqualTo(48), reason: label);
+      final hint = find.descendant(of: quickAdd, matching: find.text(ScheduleCard.quickAddHint));
+      expect(hint, findsOneWidget, reason: '$label hint');
+      expect(drawnLines(tester, hint), 1, reason: '$label hint lines');
+      expect(tester.getRect(hint).right,
+          lessThanOrEqualTo(tester.getRect(quickAdd).right + 0.5), reason: '$label hint inside');
       final card = tester.getRect(find.byType(ScheduleCard));
       expect(card.left, greaterThanOrEqualTo(0), reason: label);
       expect(card.right, lessThanOrEqualTo(width + 0.5), reason: label);
@@ -930,6 +937,33 @@ void main() {
           expect(tester.getRect(message).right,
               lessThanOrEqualTo(tester.getRect(find.byType(ScheduleCard)).right + 0.5));
           expect(scheduleRepo.createBodies, isEmpty);
+          expectCardFrame(tester, width, label);
+        });
+
+        testWidgets("after 'bugün 14:00-15:00 doktor' (one-time block added), $label", (
+          tester,
+        ) async {
+          await pumpHome(tester, width, textScale);
+          await tester.ensureVisible(quickAdd);
+          await tester.pump();
+          await tester.enterText(quickAdd, 'bugün 14:00-15:00 ${'D' * 255}');
+          await tester.testTextInput.receiveAction(TextInputAction.done);
+          for (var i = 0; i < 5; i++) {
+            await tester.pump(const Duration(milliseconds: 100));
+          }
+          expect(tester.takeException(), isNull, reason: label);
+          final body = scheduleRepo.createBodies.single;
+          expect(body['recurrence_type'], 'once', reason: label);
+          final id = scheduleRepo.server.last.id;
+          final title = find.byKey(ValueKey('schedule-title-$id'));
+          expect(inSchedule(title), findsOneWidget, reason: '$label new row');
+          expect(drawnLines(tester, title), 2, reason: '$label long title lines');
+          expect(drawnLines(tester, find.byKey(ValueKey('schedule-time-$id'))), 1);
+          final tap = find.byKey(ValueKey('schedule-row-tap-$id'));
+          expect(tester.getSize(tap).height, greaterThanOrEqualTo(48), reason: label);
+          expect(tester.getRect(tap).right,
+              lessThanOrEqualTo(tester.getRect(find.byType(ScheduleCard)).right + 0.5));
+          expect(inSchedule(find.text(quickAddFormatMessage)), findsNothing);
           expectCardFrame(tester, width, label);
         });
       }
