@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:varys/features/auth/domain/auth_notifier.dart';
 import 'package:varys/features/auth/domain/auth_state.dart';
 import 'package:varys/features/auth/presentation/login_page.dart';
+import 'package:varys/features/calendar/presentation/calendar_screen.dart';
 import 'package:varys/features/home/presentation/eisenhower_quadrant_page.dart';
 import 'package:varys/features/home/presentation/home_screen.dart';
 import 'package:varys/features/home/domain/focus_candidates.dart';
@@ -62,6 +63,7 @@ class AppRouter {
   static const String scheduleNewPath = '/schedule/new';
   static const String scheduleEditPath = '/schedule/edit';
   static const String eisenhowerRoutePath = '/eisenhower/:quadrant';
+  static const String calendarPath = '/calendar';
 
   /// `/eisenhower/<segment>` for [quadrant] (opened with push from Home).
   static String eisenhowerPath(EisenhowerQuadrant quadrant) =>
@@ -308,6 +310,15 @@ class AppRouter {
           name: 'settings',
           pageBuilder: (context, state) => const NoTransitionPage(
             child: SettingsScreen(),
+          ),
+        ),
+        // Calendar page: pushed from the Home date header and the schedule
+        // card. Needs no extra; no redirect. Not a menu destination.
+        GoRoute(
+          path: calendarPath,
+          name: 'calendar',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: CalendarScreen(),
           ),
         ),
         // Focus task selection page (outside shell, full screen, accessed via push)

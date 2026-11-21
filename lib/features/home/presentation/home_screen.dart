@@ -83,7 +83,7 @@ class HomeScreen extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        DateHeader(date: today),
+        DateHeader(date: today, onTap: () => context.push(AppRouter.calendarPath)),
         const SizedBox(height: 16),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -134,7 +134,7 @@ class HomeScreen extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        DateHeader(date: today),
+        DateHeader(date: today, onTap: () => context.push(AppRouter.calendarPath)),
         const SizedBox(height: 16),
         MainFocusCard(plan: plan),
         const SizedBox(height: 12),

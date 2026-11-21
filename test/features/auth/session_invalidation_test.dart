@@ -1,8 +1,8 @@
 // Session end (expiry or deliberate logout) invalidates every user-data
 // provider: after the next login routines, daily plan, task list, active
 // projects, the projects page list, the notes page list, the Home note
-// card, the Home schedule card and the /schedule list are fetched again and
-// no old data or old error state is shown.
+// card, the Home schedule card, the /schedule list and the open calendar
+// month are fetched again and no old data or old error state is shown.
 
 import 'dart:convert';
 import 'dart:io';
@@ -15,6 +15,8 @@ import 'package:mocktail/mocktail.dart';
 import 'package:varys/core/errors/failure.dart';
 import 'package:varys/features/auth/domain/auth_notifier.dart';
 import 'package:varys/features/auth/domain/auth_state.dart';
+import 'package:varys/features/calendar/data/calendar_repository_impl.dart';
+import 'package:varys/features/calendar/presentation/calendar_providers.dart';
 import 'package:varys/features/home/data/daily_plan_repository.dart';
 import 'package:varys/features/home/domain/daily_plan.dart';
 import 'package:varys/features/home/domain/today_provider.dart';
@@ -42,6 +44,7 @@ import 'package:varys/features/schedule/data/schedule_repository_impl.dart';
 import 'package:varys/features/schedule/presentation/schedule_day_notifier.dart';
 import 'package:varys/features/schedule/presentation/schedule_list_notifier.dart';
 
+import '../calendar/fake_calendar_repository.dart';
 import '../schedule/fake_schedule_repository.dart';
 
 class _MockDailyPlanRepository extends Mock implements DailyPlanRepository {}
@@ -57,6 +60,7 @@ class _MockNoteRepository extends Mock implements NoteRepository {}
 const _token = 'old.jwt.token';
 const _newToken = 'new.jwt.token';
 final _day = DateTime(2026, 11, 16);
+const _month = (year: 2026, month: 11);
 const _failure = ServerFailure('Sunucu hatası. Lütfen daha sonra tekrar deneyin.', statusCode: 500);
 
 class _FixedToday extends TodayNotifier {
@@ -86,6 +90,7 @@ void main() {
   late List<Note> notes;
   late List<TagCount> tags;
   late FakeScheduleRepository scheduleRepo;
+  late FakeCalendarRepository calendarRepo;
   late ProviderContainer container;
   late AuthNotifier auth;
 
@@ -127,6 +132,8 @@ void main() {
     // Old schedule: the Home card fails (old error state), the page shows one block.
     scheduleRepo = FakeScheduleRepository([scheduleListFixture().first])
       ..dayFailure = _failure;
+    // Old calendar: the open month fails (old error state).
+    calendarRepo = FakeCalendarRepository()..failure = _failure;
 
     // Session 1: old user data; routines fail (old error state).
     when(() => planRepo.getPlan(any()))
@@ -151,6 +158,7 @@ void main() {
       projectRepositoryProvider.overrideWith((ref) async => projectRepo),
       noteRepositoryProvider.overrideWith((ref) async => noteRepo),
       scheduleRepositoryProvider.overrideWith((ref) async => scheduleRepo),
+      calendarRepositoryProvider.overrideWith((ref) async => calendarRepo),
     ]);
     auth = container.read(authNotifierProvider.notifier);
     await _flush();
@@ -167,6 +175,7 @@ void main() {
     container.listen(notesListProvider, (_, _) {}); // open /notes page
     container.listen(scheduleForDayProvider(_day), (_, _) {}); // Home schedule card
     container.listen(scheduleBlocksProvider, (_, _) {}); // open /schedule page
+    container.listen(calendarMonthProvider(_month), (_, _) {}); // open /calendar page
     await _flush();
 
     expect(container.read(dailyPlanProvider).requireValue.tasks, [tasks.first]);
@@ -180,6 +189,7 @@ void main() {
     expect(container.read(notesListProvider).requireValue.notes, [notes.last]);
     expect(container.read(scheduleForDayProvider(_day)).error, _failure);
     expect(container.read(scheduleBlocksProvider).requireValue, [scheduleListFixture().first]);
+    expect(container.read(calendarMonthProvider(_month)).error, _failure);
   });
 
   tearDown(() => container.dispose());
@@ -199,6 +209,7 @@ void main() {
     scheduleRepo
       ..server = scheduleListFixture()
       ..dayFailure = null;
+    calendarRepo.failure = null;
     await auth.updateToken(_newToken);
     await _flush();
   }
@@ -248,6 +259,11 @@ void main() {
         reason: 'old schedule list must be gone');
     expect(scheduleRepo.dayRequests, [_day, _day]);
     expect(scheduleRepo.listCalls, 2);
+
+    final calendar = container.read(calendarMonthProvider(_month));
+    expect(calendar.hasError, isFalse, reason: 'old calendar error must be gone');
+    expect(calendar.requireValue, calendarMonthFixture());
+    expect(calendarRepo.requests, [_month, _month]);
   }
 
   test('session expiry invalidates routines, daily plan and tasks; re-login reloads them',
@@ -290,8 +306,10 @@ void main() {
       scheduleForDayProvider,
       scheduleBlocksProvider,
       scheduleRepositoryProvider,
+      calendarMonthProvider,
+      calendarRepositoryProvider,
     });
-    expect(userData, hasLength(16));
+    expect(userData, hasLength(18));
 
     final infra = <ProviderOrFamily>[];
     AuthNotifier.invalidateSessionInfra(infra.add);
@@ -311,5 +329,6 @@ void main() {
     expect(container.read(notesListProvider).requireValue.notes, [notes.last]);
     expect(container.read(scheduleForDayProvider(_day)).hasError, isTrue);
     expect(container.read(scheduleBlocksProvider).requireValue, [scheduleListFixture().first]);
+    expect(container.read(calendarMonthProvider(_month)).hasError, isTrue);
   });
 }

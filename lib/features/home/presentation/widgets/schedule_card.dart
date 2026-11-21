@@ -25,6 +25,7 @@ class ScheduleCard extends ConsumerWidget {
   static const String emptyText = 'Bugün için program yok';
   static const String moreText = 'Daha fazla';
   static const String addTooltip = 'Blok ekle';
+  static const String calendarTooltip = 'Takvim';
   static const String retryText = 'Tekrar dene';
   static const String nowLabel = 'Şimdi';
   static const String quickAddHint = 'Örn: 08:30-09:00 kahvaltı';
@@ -104,6 +105,13 @@ class _ScheduleCardBody extends ConsumerWidget {
                       color: theme.colorScheme.primary,
                     ),
                   ),
+                ),
+                IconButton(
+                  key: const ValueKey('schedule-card-calendar'),
+                  icon: const Icon(Icons.calendar_month),
+                  tooltip: ScheduleCard.calendarTooltip,
+                  constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                  onPressed: () => context.push(AppRouter.calendarPath),
                 ),
                 IconButton(
                   key: const ValueKey('schedule-card-add'),

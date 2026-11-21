@@ -1,0 +1,209 @@
+{
+  "year": 2024,
+  "month": 2,
+  "days": [
+    {
+      "day": "2024-02-01",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-02",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-03",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 1
+    },
+    {
+      "day": "2024-02-04",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 1
+    },
+    {
+      "day": "2024-02-05",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 1,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-06",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-07",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 1,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-08",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-09",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-10",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 1
+    },
+    {
+      "day": "2024-02-11",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 1
+    },
+    {
+      "day": "2024-02-12",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 1,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-13",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-14",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 1,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-15",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 1,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-16",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-17",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 1
+    },
+    {
+      "day": "2024-02-18",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 1
+    },
+    {
+      "day": "2024-02-19",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 1,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-20",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-21",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 1,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-22",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-23",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-24",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 1
+    },
+    {
+      "day": "2024-02-25",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 1
+    },
+    {
+      "day": "2024-02-26",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 1,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-27",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 0,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-28",
+      "task_count": 0,
+      "due_count": 0,
+      "routine_count": 1,
+      "schedule_count": 0
+    },
+    {
+      "day": "2024-02-29",
+      "task_count": 1,
+      "due_count": 1,
+      "routine_count": 0,
+      "schedule_count": 0
+    }
+  ]
+}

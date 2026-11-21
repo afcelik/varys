@@ -6,6 +6,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:varys/core/network/api_client.dart';
 import 'package:varys/core/storage/secure_storage.dart';
+import 'package:varys/features/calendar/data/calendar_repository_impl.dart';
+import 'package:varys/features/calendar/presentation/calendar_providers.dart';
 import 'package:varys/features/home/data/daily_plan_repository.dart';
 import 'package:varys/features/home/presentation/providers/daily_plan_provider.dart';
 import 'package:varys/features/notes/data/note_repository_impl.dart';
@@ -72,6 +74,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
     invalidate(scheduleForDayProvider);
     invalidate(scheduleBlocksProvider);
     invalidate(scheduleRepositoryProvider);
+    invalidate(calendarMonthProvider);
+    invalidate(calendarRepositoryProvider);
   }
 
   /// Identity infrastructure (not user data). `apiClientProvider` also

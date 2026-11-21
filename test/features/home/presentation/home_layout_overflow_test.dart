@@ -16,6 +16,11 @@
 // "Tümünü gör (+3)", an unbroken 255-character title, 00:00-23:59, "Şimdi"
 // labels at a fixed 09:10), empty, loading, error and with the quick-add
 // error message open; its groups use fixed pump steps (no pumpAndSettle).
+// The date header and the schedule card's calendar button (the entry points
+// to /calendar) are drawn at every width and text scale: one >= 48 high
+// button labelled 'Takvimi aç' that holds the whole date, no overlap with the
+// first card, and a 48x48 calendar button between the card title and "Blok
+// ekle" (fixed pump steps).
 
 import 'dart:async';
 
@@ -42,6 +47,8 @@ import 'package:varys/features/home/presentation/focus_task_selection_page.dart'
 import 'package:varys/features/home/presentation/home_screen.dart';
 import 'package:varys/features/home/presentation/widgets/daily_plan_state_widgets.dart';
 import 'package:varys/features/home/presentation/widgets/daily_tasks_card.dart';
+import 'package:varys/features/home/presentation/widgets/date_header.dart';
+import 'package:varys/features/home/data/date_utils.dart';
 import 'package:varys/features/home/presentation/widgets/eisenhower_card.dart';
 import 'package:varys/features/home/presentation/widgets/focus_cards.dart';
 import 'package:varys/features/home/presentation/widgets/inbox_card.dart';
@@ -1586,6 +1593,68 @@ void main() {
           expect(find.byType(DailyTasksCard), findsOneWidget);
           expect(find.text(_routineTitle), findsOneWidget);
           expect(find.byType(DailyPlanError), findsNothing);
+        });
+      }
+    }
+  });
+
+  group('Date header and schedule calendar button (entry points to /calendar)', () {
+    for (final width in _widths) {
+      for (final textScale in _textScales) {
+        final label = 'width ${width.toInt()}px, textScale $textScale';
+
+        testWidgets('header button >= 48 holds the date; calendar button 48x48, $label', (
+          tester,
+        ) async {
+          await pumpApp(tester, width, textScale: textScale, settle: false);
+          for (var i = 0; i < 10; i++) {
+            await tester.pump(const Duration(milliseconds: 100));
+          }
+          expect(tester.takeException(), isNull, reason: label);
+          expectWorstCaseDrawn(tester, width);
+
+          final header = find.byKey(const ValueKey('date-header-tap'));
+          expectTapTarget(tester, header, '$label header');
+          final headerRect = tester.getRect(header);
+          final text = find.descendant(
+            of: find.byType(DateHeader),
+            matching: find.text(formatDateForDisplay(_day)),
+          );
+          expect(text, findsOneWidget, reason: label);
+          final textRect = tester.getRect(text);
+          expect(headerRect.top, lessThanOrEqualTo(textRect.top + 0.5), reason: label);
+          expect(headerRect.bottom, greaterThanOrEqualTo(textRect.bottom - 0.5), reason: label);
+          expect(headerRect.right, lessThanOrEqualTo(width + 0.5), reason: label);
+          expect(drawnLines(tester, text), inInclusiveRange(1, 2), reason: '$label date lines');
+          final firstCard = tester.getRect(find.byType(MainFocusCard));
+          expect(firstCard.top, greaterThanOrEqualTo(headerRect.bottom), reason: label);
+          final handle = tester.ensureSemantics();
+          expect(find.bySemanticsLabel(DateHeader.openCalendarLabel), findsOneWidget);
+          handle.dispose();
+
+          final calendar = find.byKey(const ValueKey('schedule-card-calendar'));
+          expectTapTarget(tester, calendar, '$label calendar');
+          final title = find.descendant(
+            of: find.byType(ScheduleCard),
+            matching: find.text(ScheduleCard.title),
+          );
+          expect(drawnLines(tester, title), 1, reason: '$label card title');
+          final add = find.byKey(const ValueKey('schedule-card-add'));
+          expect(
+            tester.getRect(title).right,
+            lessThanOrEqualTo(tester.getRect(calendar).left + 0.5),
+            reason: label,
+          );
+          expect(
+            tester.getRect(calendar).right,
+            lessThanOrEqualTo(tester.getRect(add).left + 0.5),
+            reason: label,
+          );
+          expect(
+            tester.getRect(add).right,
+            lessThanOrEqualTo(tester.getRect(find.byType(ScheduleCard)).right + 0.5),
+            reason: label,
+          );
         });
       }
     }
